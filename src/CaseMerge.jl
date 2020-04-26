@@ -61,6 +61,7 @@ function build_dyn(top::TypeObject, branches::Vector{Branch})::AbstractCase
            push!(groups, i)
            push!(groups, i + 1)
            labels[i] = top
+           continue
         end
         
         last_group_start = groups[end]
