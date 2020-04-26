@@ -120,7 +120,6 @@ function build_dyn(top::TypeObject, branches::Vector{Branch})::AbstractCase
                 SwitchCase(Dict(switch))
         )
     end
-    println(labels)
     if length(enum_cases) === 1
         enum_cases[1]
     else

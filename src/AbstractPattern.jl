@@ -1,7 +1,7 @@
 module AbstractPattern
 
-export runterm
-export and, or, literal, and, wildcard, switch, capture, decons,
+export spec_gen, runterm
+export and, or, literal, and, wildcard, capture, decons,
        guard, effect, metadata, self
 export PatternCompilationError, AbstractAccessor, PureAccessor,
        OnceAccessor, ManyTimesAccessor, Recogniser, PatternImpl
@@ -34,23 +34,4 @@ function spec_gen(branches :: Pair...)
     case_merge(split_cores)
 end
 
-using PrettyPrint
-
-function PrettyPrint.pprint_impl(io, seq::Dict, indent, newline)
-    PrettyPrint.pprint_for_seq(io, '(', ')', collect(seq), indent, newline)
-end
-
-function PrettyPrint.pprint_impl(io, t::TypeObject, indent, newline)
-    print(io, repr(t))
-end
-
-
-
-spec_gen(
-    or(
-        literal(1),
-        literal("string"),
-    ) => 1,
-    literal(2) => 2
-) |> pprint
 end # module

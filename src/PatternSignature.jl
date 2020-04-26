@@ -92,7 +92,6 @@ PatternImpl = NamedTuple{
         :or,
         :literal,
         :wildcard,
-        :switch,
         :capture,
         :decons,
         :guard,
@@ -131,18 +130,11 @@ function wildcard(impls::PatternImpls)
     end
 end
 
-switch(vs::Vector{Pair}, otherwise) = function apply(impls::PatternImpls)
-    xs = [k => p(impls) for (k, p) in vs]
-    map(impls) do impl
-        impl.switch(xs, otherwise(impls))
-    end
-end
 capture(n) = function apply(impls::PatternImpls)
     map(impls) do impl
         impl.capture(n)
     end
 end
-
 
 decons(recog, ps) = function apply(impls::PatternImpls)
     xs = [p(impls) for p in ps]
@@ -178,7 +170,6 @@ const self = (
     or = or,
     literal = literal,
     wildcard = wildcard,
-    switch = switch,
     capture = capture,
     decons = decons,
     guard = guard,

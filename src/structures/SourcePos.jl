@@ -28,15 +28,6 @@ function term_position(points_of_view::Dict{Any, Int})
     literal(_) = nothing
     wildcard = nothing
 
-    function switch(vs, otherwise)
-        for each in getindex.([p for (_, p) in vs], viewpoint)
-            if each !== nothing
-                return each
-            end
-        end
-        otherwise[viewpoint]
-    end
-
     capture(_) = nothing
 
     function decons(_, ps)
@@ -58,7 +49,6 @@ function term_position(points_of_view::Dict{Any, Int})
         or = or,
         literal = literal,
         wildcard = wildcard,
-        switch = switch,
         capture = capture,
         decons = decons,
         guard = guard,

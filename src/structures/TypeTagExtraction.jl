@@ -30,11 +30,6 @@ function tag_extract(points_of_view::Dict{Any, Int})
     end
 
     wildcard = Any
-
-    function switch(vs, otherwise)
-        error("switch in this pass should be splitted in to non-nested `or`")
-    end
-
     capture(_) = Any
 
     function decons(recog, ns)
@@ -50,7 +45,6 @@ function tag_extract(points_of_view::Dict{Any, Int})
         or = or,
         literal = literal,
         wildcard = wildcard,
-        switch = switch,
         capture = capture,
         decons = decons,
         guard = guard,

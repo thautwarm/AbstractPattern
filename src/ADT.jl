@@ -29,12 +29,6 @@ end
 struct Wildcard <: TagfulPattern
 end
 
-
-struct Switch <: TagfulPattern
-    cases :: Vector{Pair{TypeObject, PatternInfo}}
-    otherwise :: TagfulPattern
-end
-
 struct Capture <: TagfulPattern
     n :: Union{String, Symbol}
 end
@@ -65,7 +59,6 @@ function untagless(points_of_view::Dict{Any, Int})
         or= ps -> Or(PatternInfo[!e for e in ps]),
         literal = Literal,
         wildcard = Wildcard(),
-        switch = (vs, otherwise) -> Switch(Pair{TypeObject, PatternInfo}[k=>!p for (k, p) in vs], !otherwise),
         capture = Capture,
         decons = (recog, ps) -> Deconstrucution(recog, PatternInfo[!p for p in ps]),
         guard = Guard,
