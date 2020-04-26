@@ -4,12 +4,6 @@ struct PatternCompilationError <: Exception
 end
 
 abstract type AbstractAccessor end
-"""
-the field accessing of a composite datum is pure.
-e.g., for tuples:
-    `tuple_accessor = PureAccessor()`
-"""
-struct PureAccessor <: AbstractAccessor end
 
 """
 All fields of the in-deconstructing datum are computed once together.
@@ -82,7 +76,7 @@ end
 
 
 struct Recogniser{F}
-    tag::Type{F}
+    tag::F
     accessor::AbstractAccessor
 end
 

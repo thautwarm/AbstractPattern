@@ -1,6 +1,6 @@
 @nospecialize
-export TagfulPattern, And, Or, Literal,
-       Wildcard, Switch, Capture,
+export TagfulPattern, And, Or,
+       Literal, Wildcard, Capture,
        Deconstrucution, Guard, Effect,
        untagless, TagfulPattern,
        PatternInfo
@@ -65,5 +65,5 @@ function untagless(points_of_view::Dict{Any, Int})
         effect = Effect,
         metadata = (term, _) -> term[myviewpoint]
     )
-    end
+end
 @specialize    

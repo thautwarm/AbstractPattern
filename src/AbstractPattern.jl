@@ -15,6 +15,8 @@ include("structures/SourcePos.jl")
 include("structures/TypeTagExtraction.jl")
 include("ADT.jl")
 include("CaseMerge.jl")
+include("UserSignature.jl")
+include("Retagless.jl")
 
 @nospecialize
 function runterm(term, xs)

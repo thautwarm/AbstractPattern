@@ -33,7 +33,8 @@ function tag_extract(points_of_view::Dict{Any, Int})
     capture(_) = Any
 
     function decons(recog, ns)
-        recog.tag
+        args = getindex.(ns, viewpoint)
+        recog.tag(args...)
     end
 
     guard(_) = Any
