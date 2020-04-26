@@ -1,4 +1,4 @@
-name = "PerfectPattern"
+name = "AbstractPattern"
 uuid = "01f4d636-c494-49cd-be72-24f3977c0639"
 authors = ["thautawarm"]
 version = "0.1.0"

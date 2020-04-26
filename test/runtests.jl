@@ -1,6 +1,8 @@
-using PerfectPattern
+using AbstractPattern
 using Test
 
-@testset "PerfectPattern.jl" begin
+
+
+@testset "AbstractPattern.jl" begin
     # Write your own tests here.
 end
