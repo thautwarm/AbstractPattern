@@ -2,7 +2,7 @@
 """The view point of a term's source code position.
 i.e. the line number node.
 """
-function term_position(points_of_view::Dict{Any, Int})
+function term_position(points_of_view::Dict{Function, Int})
     viewpoint = points_of_view[term_position]
 
     function and(_, ps)
@@ -28,9 +28,10 @@ function term_position(points_of_view::Dict{Any, Int})
     literal(_, _) = nothing
     wildcard(_) = nothing
 
-    function decons(_, tcons, guard, view, extract, ps)
+    function decons(_, tcons, guard1, view, guard2, extract, ps)
         res = getindex.(ps, viewpoint)
-        push!(res, guard[viewpoint])
+        push!(res, guard1[viewpoint])
+        push!(res, guard2[viewpoint])
         i = findfirst(!isnothing, res)
         if i === nothing
             nothing

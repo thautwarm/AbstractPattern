@@ -1,6 +1,6 @@
 module UserSitgnature
 
-export and, or, literal, and, wildcard, capture, decons,
+export and, or, literal, and, wildcard, decons,
        guard, effect, self
 
 PatternUse = NamedTuple{
@@ -15,6 +15,7 @@ PatternUse = NamedTuple{
     )
 }
 
+@nospecialize
 _empty_ntuple = NamedTuple()
 and(ps::Vector, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
     xs = [p(impl) for p in ps]
@@ -32,10 +33,11 @@ wildcard(config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
     impl.wildcard(config)
 end
 
-decons(tcons, guard, view, extract, ps, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
+decons(tcons, guard1, view, guard2, extract, ps, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
     xs = [p(impl) for p in ps]
-    guard′ = guard(impl)
-    impl.decons(tcons, guard′, view, extract, xs, config)
+    guard1′ = guard1(impl)
+    guard2′ = guard2(impl)
+    impl.decons(tcons, guard1′, view, guard2′, extract, xs, config)
 end
 
 guard(pred, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
@@ -57,3 +59,4 @@ const self = (
 )
 
 end
+@specialize

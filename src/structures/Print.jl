@@ -1,7 +1,7 @@
 @nospecialize
 """The view point of showing patterns
 """
-function pretty(points_of_view::Dict{Any, Int})
+function pretty(points_of_view::Dict{Function, Int})
     viewpoint = points_of_view[pretty]
 
     function and(_, ps)
@@ -32,7 +32,7 @@ function pretty(points_of_view::Dict{Any, Int})
     literal(_, val) = Print.w(string(val))
     wildcard(_) = Print.w("_")
 
-    function decons(_, tcons, guard, view, extract, ps)
+    function decons(_, tcons, _, view, _, extract, ps)
         Print.seq(Print.w(repr(tcons)), Print.w("("), getindex.(ps, viewpoint)..., Print.w(")"))
     end
 

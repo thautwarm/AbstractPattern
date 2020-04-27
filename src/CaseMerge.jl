@@ -30,6 +30,8 @@ struct Shaped <: AbstractCase
     case :: AbstractCase
 end
 
+@nospecialize
+
 function case_split!(result::Vector{Branch}, branches :: Vector{Branch})
     for (p, branch) in branches
         if p.pattern isa Or
@@ -135,3 +137,5 @@ function case_merge(branches::Vector{Branch})
     top = reduce(typejoin, TypeObject[pattern.typetag for (pattern, _) in branches])
     build_dyn(top, branches)
 end
+
+@specialize

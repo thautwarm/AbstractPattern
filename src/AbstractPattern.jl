@@ -25,7 +25,7 @@ function MK(m::Any)
 end
 
 function runterm(term, xs)
-    points_of_view = Dict{Any, Int}(x => i for (i, x) in enumerate(xs))
+    points_of_view = Dict{Function, Int}(x => i for (i, x) in enumerate(xs))
     impls = PatternImpl[x(points_of_view) for x in xs]
     term(impls)
 end

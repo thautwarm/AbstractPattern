@@ -1,6 +1,9 @@
 module RedyFlavoured
 using AbstractPattern
 
+Config = NamedTuple{(:type, :ln)}
+Scope = Dict{Symbol,Symbol}
+
 abstract type Cond end
 struct AndCond <: Cond
     left::Cond
@@ -43,7 +46,7 @@ function build_readable_expression!(
     following_stmts::Vector{Any},
     cond::TrueCond,
 )
-    cond.stmt isa Union{Bool, Int, Float64, Nothing} #= shall contain more literal typs =# && return
+    cond.stmt isa Union{Bool,Int,Float64,Nothing} && return #= shall contain more literal typs =#
     push!(following_stmts, cond.stmt)
     nothing
 end
@@ -98,46 +101,41 @@ function to_expression(exprs::Vector{Any}, following_stmts::Vector)
     end
 end
 
-allsame(xs) = any(e -> e == xs[1], xs)
+allsame(xs::Vector) = any(e -> e == xs[1], xs)
 
 function myimpl()
 
     function cache(f)
-        function apply(env, target::Target{true})
+        function apply(env::Scope, target::Target{true})::Cond
             target′ = target.with_repr(gensym(string(target.repr)), Val(false))
-            AndCond(
-                TrueCond(:($(target′.repr) = $(target.repr))),
-                f(env, target′)
-            )
+            AndCond(TrueCond(:($(target′.repr) = $(target.repr))), f(env, target′))
         end
-        function apply(env, target::Target{false})
+        function apply(env::Scope, target::Target{false})::Cond
             f(env, target)
         end
         apply
     end
 
-    wildcard(_) = (env, target::Target) -> TrueCond()
+    wildcard(::Config) = (env::Scope, target::Target) -> TrueCond()
 
-    literal(v, config) = function (env, target::Target)
+    literal(v, config::Config) =
+        function ap_literal(env, target::Target)::Cond
         CheckCond(:($(target.repr) == $(QuoteNode(v))))
     end
 
-    and2(p1, p2) = function (env, target::Target{false})
-        AndCond(
-            p1(env, target),
-            p2(env, target)
-        )
+    and2(p1::Function, p2::Function) = function ap_and(env::Scope, target::Target{false})::Cond
+        AndCond(p1(env, target), p2(env, target))
     end
 
-    function and(ps, config)
+    function and(ps::Vector{<:Function}, config::Config)
         @assert !isempty(ps)
         cache(foldl(and2, ps))
     end
 
 
-    function or(ps, config)
+    function or(ps::Vector{<:Function}, config::Config)
         @assert !isempty(ps)
-        function (env, target::Target{false})
+        function ap_or(env, target::Target{false})::Cond
             or_checks = Cond[]
             envs = Dict{Symbol,Symbol}[]
             for p in ps
@@ -176,43 +174,60 @@ function myimpl()
 
     # C(p1, p2, .., pn)
     # pattern = (target: code, remainder: code) -> code
-    function decons(_, guard, view, extract, ps, config)
+    function decons(
+        _,
+        guard1::Function,
+        view,
+        guard2::Function,
+        extract,
+        ps::Vector,
+        config::Config,
+    )
         ty = config.type
-        function (env, target::Target{false})
+        function ap_decons(env, target::Target{false})::Cond
             chk = if target.type <: ty
                 TrueCond()
             else
                 target.type_narrow!(ty)
                 CheckCond(:($(target.repr) isa $ty))
             end
-            chk = AndCond(chk, guard(env, target))
-            
+
+            if guard1 !== AbstractPattern.no_guard
+                chk = AndCond(chk, guard1(env, target))
+            end
+
             if view === AbstractPattern.identity_view
                 sym = target.repr
             else
                 sym = gensym(string(target.repr))
                 chk = AndCond(
                     chk,
-                    TrueCond(:($sym = $(view(sym, env, config.ln))))
+                    TrueCond(:($sym = $(view(target.repr, env, config.ln)))),
                 )
             end
+
+            if guard2 !== AbstractPattern.identity_view
+                chk = AndCond(chk, guard2(env, target))
+            end
+
             for i in eachindex(ps)
+                p = ps[i] :: Function
                 field_target = Target{true}(extract(sym, i), Ref{TypeObject}(Any))
-                chk = AndCond(chk, ps[i](env, field_target))
+                chk = AndCond(chk, p(env, field_target))
             end
             chk
         end |> cache
     end
 
-    function guard(pred, config)
-        function (env, target::Target{false})
+    function guard(pred::Function, config::Config)
+        function ap_guard(env, target::Target{false})::Cond
             expr = pred(target.repr, env, config.ln)
             expr === true ? TrueCond() : CheckCond(expr)
         end |> cache
     end
 
-    function effect(perf, config)
-        function (env, target::Target{false})
+    function effect(perf::Function, config::Config)
+        function ap_effect(env, target::Target{false})::Cond
             TrueCond(perf(target.repr, env, config.ln))
         end |> cache
     end
@@ -231,7 +246,7 @@ end
 const redy_impl = myimpl()
 
 function compile_spec!(
-    scope :: Dict{Symbol, Symbol},
+    scope::Dict{Symbol,Symbol},
     suite::Vector{Any},
     x::Shaped,
     target::Target{IsComplex},
@@ -250,14 +265,18 @@ function compile_spec!(
     conditional_expr = to_expression(cond)
     true_clause = Expr(:block)
     compile_spec!(scope, true_clause.args, x.case, target)
-    push!(suite, 
-        conditional_expr === true ?
-            true_clause :
-            Expr(:if, conditional_expr, true_clause)
+    push!(
+        suite,
+        conditional_expr === true ? true_clause : Expr(:if, conditional_expr, true_clause),
     )
 end
 
-function compile_spec!(scope :: Dict{Symbol, Symbol}, suite::Vector{Any}, x::Leaf, target::Target)
+function compile_spec!(
+    scope::Dict{Symbol,Symbol},
+    suite::Vector{Any},
+    x::Leaf,
+    target::Target,
+)
     for (k, v) in scope
         push!(suite, :($k = $v))  # hope this gets optimized to move semantics...
     end
@@ -265,7 +284,7 @@ function compile_spec!(scope :: Dict{Symbol, Symbol}, suite::Vector{Any}, x::Lea
 end
 
 function compile_spec!(
-    scope :: Dict{Symbol, Symbol},
+    scope::Dict{Symbol,Symbol},
     suite::Vector{Any},
     x::SwitchCase,
     target::Target{IsComplex},
@@ -286,7 +305,7 @@ function compile_spec!(
 end
 
 function compile_spec!(
-    scope :: Dict{Symbol, Symbol},
+    scope::Dict{Symbol,Symbol},
     suite::Vector{Any},
     x::EnumCase,
     target::Target{IsComplex},
@@ -302,14 +321,13 @@ function compile_spec!(
 end
 
 function compile_spec(target::Any, case::AbstractCase, ln::Union{LineNumberNode,Nothing})
-    target = target isa Symbol ?
-        Target{false}(target, Ref{TypeObject}(Any)) :
+    target = target isa Symbol ? Target{false}(target, Ref{TypeObject}(Any)) :
         Target{true}(target, Ref{TypeObject}(Any))
 
 
     ret = Expr(:block)
     suite = ret.args
-    scope = Dict{Symbol, Symbol}()
+    scope = Dict{Symbol,Symbol}()
     compile_spec!(scope, suite, case, target)
     if !isnothing(ln)
         # TODO: better trace
@@ -318,9 +336,7 @@ function compile_spec(target::Any, case::AbstractCase, ln::Union{LineNumberNode,
     else
         push!(suite, :(error("no pattern matched")))
     end
-    length(suite) === 1 ?
-        suite[1] :
-        ret
+    length(suite) === 1 ? suite[1] : ret
 end
 
 """compile a series of `Term => Symbol`(branches) to a Julia expression

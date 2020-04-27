@@ -3,7 +3,7 @@
 # PatternCompilationError is from ../PatternSignature
 """the view point of the type tag for each term
 """
-function tag_extract(points_of_view::Dict{Any, Int})
+function tag_extract(points_of_view::Dict{Function, Int})
     viewpoint = points_of_view[tag_extract]
     viewpos = points_of_view[term_position]
 
@@ -30,7 +30,7 @@ function tag_extract(points_of_view::Dict{Any, Int})
 
     wildcard(_) = Any
 
-    function decons(me, tcons, guard, view, extract, ns)
+    function decons(me, tcons, _, view, _, extract, ns)
         args = getindex.(ns, viewpoint)
         try
             tcons(args...)

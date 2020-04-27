@@ -1,6 +1,9 @@
 using AbstractPattern
 using Test
 
+
+function test()
+
 backend = MK(RedyFlavoured)
 
 code = backend(
@@ -35,8 +38,15 @@ code = backend(
                 P_type_of(Int),
                 P_type_of(Int)
             ])
-        ]) =>  :g
+        ]) =>  :g,
+
+        P_slow_view(x -> :($x, $x),
+            P_tuple([P_type_of(Int), P_type_of(Int)])
+        ) => :h
     ]
 )
 
-println(code)
+end
+
+
+println(test())

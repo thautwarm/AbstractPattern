@@ -7,6 +7,8 @@ struct Target{IsComplex}
     type::Ref{TypeObject}
 end
 
+@nospecialize
+
 function target_method end
 
 function Base.getproperty(target::Target, sym::Symbol)
@@ -55,3 +57,5 @@ end
 function target_method(target::Target{IsC}, ::Val{:clone}) where IsC
     Target{IsC}(target.repr, Ref{TypeObject}(target.type))
 end
+
+@specialize

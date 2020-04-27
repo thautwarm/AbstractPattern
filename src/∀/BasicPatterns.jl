@@ -1,14 +1,15 @@
-export P_bind, P_tuple, P_type_of, P_vector, P_capture
+export P_bind, P_tuple, P_type_of, P_vector, P_capture, P_vector3, P_slow_view
 @nospecialize
 OptionalLn = Union{LineNumberNode,Nothing}
 
-function mk_type_object(i::Int, ::Type{T}) where T
+function mk_type_object(i::Int, ::Type{T}) where {T}
     if isabstracttype(T)
         TypeVar(gensym(string(i)), T)
     else
         T
     end
 end
+
 """match by type
 """
 function P_type_of(t)
@@ -64,6 +65,53 @@ function P_vector(fields::AbstractArray)
     function pred(target, scope, ln)
         :(length($target) === $(length(fields)))
     end
-    decons(type_of_vector; guard=guard(pred), extract=extract, ps=fields)
+    decons(type_of_vector; guard1 = guard(pred), extract = extract, ps = fields)
+end
+
+"""deconstruct a vector in this way: [a, b, c, pack..., d, e]
+"""
+function P_vector3(init::AbstractArray, pack, tail::AbstractArray)
+    n1 = length(init)
+    n2 = length(tail)
+    min_len = length(init) + length(tail)
+    function type_of_vector(types...)
+        if length(types) == 0
+            AbstractArray{Any,1}
+        else
+            AbstractArray{T,1} where {T<:reduce(typejoin, types)}
+        end
+    end
+    function extract(arr, i::Int)
+        if i <= n1
+            :($arr[$i])
+        elseif i === n1 + 1
+            :(view($arr, n1:length($arr)-n2))
+        else
+            incr = i - n1 - 1
+            :(arr[end-n2+incr])
+        end
+    end
+    function pred(target, scope, ln)
+        :(length($target) >= $min_len)
+    end
+    decons(type_of_vector; guard1 = guard(pred), extract = extract, ps = [init; pack; tail])
+end
+
+
+"""untyped view pattern
+"""
+function P_slow_view(trans, p)
+    function type_of_slow_view(_)
+        Any
+    end
+    function extract(o, i)
+        @assert i === 1
+        o
+    end
+    function view(target, scope, ln)
+        :($(trans(target)))
+    end
+
+    decons(type_of_slow_view; view = view, extract = extract, ps = [p])
 end
 @specialize

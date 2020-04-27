@@ -31,8 +31,9 @@ end
 
 struct Deconstrucution <: TagfulPattern
     tcons :: Function
-    guard :: PatternInfo
+    guard1 :: PatternInfo
     view :: Function
+    guard2 :: PatternInfo
     extract :: Function
     params :: Vector{PatternInfo}
 end
@@ -53,7 +54,7 @@ function _uncurry_call_argtail(f)
 end
 @nospecialize
 
-function untagless(points_of_view::Dict{Any, Int})
+function untagless(points_of_view::Dict{Function, Int})
     myviewpoint = points_of_view[untagless]
     metaviewpoint = points_of_view[term_position]
     typetag_viewpoint = points_of_view[tag_extract]
@@ -61,12 +62,16 @@ function untagless(points_of_view::Dict{Any, Int})
         all_info[[myviewpoint, metaviewpoint, typetag_viewpoint]]...
     )
     ! = mk_info
+    function decons(_::Vector{Any}, tcons, guard1, view, guard2, extract, ps)
+        ! = mk_info
+        Deconstrucution(tcons, !guard1, view, !guard2, extract, PatternInfo[!p for p in ps])
+    end
     (
         and = (_, ps) -> And(PatternInfo[!e for e in ps]),
         or= (_, ps) -> Or(PatternInfo[!e for e in ps]),
         literal = _uncurry_call_argtail(Literal),
         wildcard = _uncurry_call_argtail(Wildcard),
-        decons = (_, tcons, guard, view, extract, ps) -> Deconstrucution(tcons, !guard, view, extract, PatternInfo[!p for p in ps]),
+        decons = decons,
         guard = _uncurry_call_argtail(Guard),
         effect = _uncurry_call_argtail(Effect),
         metadata = (_, term, _) -> term[myviewpoint]
