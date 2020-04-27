@@ -31,13 +31,9 @@ function pretty(points_of_view::Dict{Any, Int})
     end
     literal(_, val) = Print.w(string(val))
     wildcard(_) = Print.w("_")
-    
-    function capture(_, n)
-        Print.seq(Print.w(repr(n)))
-    end
-    
-    function decons(_, recog, ps)
-        Print.seq(Print.w(repr(recog.tag)), Print.w("("), getindex.(ps, viewpoint)..., Print.w(")"))
+
+    function decons(_, tcons, guard, view, extract, ps)
+        Print.seq(Print.w(repr(tcons)), Print.w("("), getindex.(ps, viewpoint)..., Print.w(")"))
     end
 
     function guard(_, pred)
@@ -57,7 +53,6 @@ function pretty(points_of_view::Dict{Any, Int})
         or = or,
         literal = literal,
         wildcard = wildcard,
-        capture = capture,
         decons = decons,
         guard = guard,
         effect = effect,

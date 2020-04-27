@@ -11,7 +11,7 @@ code = backend(
             literal("string"),
         ) => :a,
 
-        and(literal(2), capture(:a)) => :b,
+        and(literal(2), P_capture(:a)) => :b,
 
         guard((_, _, _) -> :some_cond) => :c,
         

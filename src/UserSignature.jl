@@ -9,7 +9,6 @@ PatternUse = NamedTuple{
         :or,
         :literal,
         :wildcard,
-        :capture,
         :decons,
         :guard,
         :effect
@@ -33,13 +32,10 @@ wildcard(config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
     impl.wildcard(config)
 end
 
-capture(n::Symbol, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
-    impl.capture(n, config)
-end
-
-decons(recog, ps, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
+decons(tcons, guard, view, extract, ps, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
     xs = [p(impl) for p in ps]
-    impl.decons(recog, xs, config)
+    guard′ = guard(impl)
+    impl.decons(tcons, guard′, view, extract, xs, config)
 end
 
 guard(pred, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
@@ -55,7 +51,6 @@ const self = (
     or = or,
     literal = literal,
     wildcard = wildcard,
-    capture = capture,
     decons = decons,
     guard = guard,
     effect = effect

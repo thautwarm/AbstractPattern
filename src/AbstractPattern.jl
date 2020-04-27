@@ -1,20 +1,11 @@
 module AbstractPattern
 
-export spec_gen, runterm, MK, RedyFlavoured
-export and, or, literal, and, wildcard, capture, decons,
+export spec_gen, runterm, MK, RedyFlavoured, TypeObject
+export and, or, literal, and, wildcard, decons,
        guard, effect, metadata, self
-export PatternCompilationError, AbstractAccessor, Target,
-       OnceAccessor, ManyTimesAccessor, Recogniser, PatternImpl
+export PatternCompilationError, Target, PatternImpl
 
-TypeObject = Union{DataType, Union}
-
-"""representing the in-matching object in pattern compile time
-"""
-struct Target{IsComplex}
-    repr::Any
-    type::TypeObject
-end
-
+include("Target.jl")
 include("PatternSignature.jl")
 include("Print.jl")
 include("structures/Print.jl")

@@ -29,15 +29,14 @@ function tag_extract(points_of_view::Dict{Any, Int})
     end
 
     wildcard(_) = Any
-    capture(_, _) = Any
 
-    function decons(me, recog, ns)
+    function decons(me, tcons, guard, view, extract, ns)
         args = getindex.(ns, viewpoint)
         try
-            recog.tag(args...)
+            tcons(args...)
         catch e
-            if e isa MethodError && e.f === recog.tag
-                throw(PatternCompilationError(me[viewpos], "invalid arguments for deconstructor $recog"))
+            if e isa MethodError && e.f === tcons
+                throw(PatternCompilationError(me[viewpos], "invalid arguments for deconstructor $tcons"))
             end
             rethrow()
         end
@@ -52,7 +51,6 @@ function tag_extract(points_of_view::Dict{Any, Int})
         or = or,
         literal = literal,
         wildcard = wildcard,
-        capture = capture,
         decons = decons,
         guard = guard,
         effect = effect,

@@ -28,10 +28,9 @@ function term_position(points_of_view::Dict{Any, Int})
     literal(_, _) = nothing
     wildcard(_) = nothing
 
-    capture(_, _) = nothing
-
-    function decons(_, _, ps)
+    function decons(_, tcons, guard, view, extract, ps)
         res = getindex.(ps, viewpoint)
+        push!(res, guard[viewpoint])
         i = findfirst(!isnothing, res)
         if i === nothing
             nothing
@@ -49,7 +48,6 @@ function term_position(points_of_view::Dict{Any, Int})
         or = or,
         literal = literal,
         wildcard = wildcard,
-        capture = capture,
         decons = decons,
         guard = guard,
         effect = effect,

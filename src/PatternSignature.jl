@@ -1,53 +1,11 @@
 struct PatternCompilationError <: Exception
-    line:: Union{LineNumberNode, Nothing}
+    line::Union{LineNumberNode,Nothing}
     msg::AbstractString
 end
 
-abstract type AbstractAccessor end
-
-"""
-All fields of the in-deconstructing datum are computed once together.
-
-To avoid redundant computations when deconstructing:
-we just calculate a tuple(hereafter `viewed`) from the in-deconstructing datum,
-and do pattern matching on the returned tuple `viewed`.
-
-Field `view` depends on your implementation.
-For instance, it can be a function to transform a composite datum to a tuple.
-"""
-struct OnceAccessor{F<:Function} <: AbstractAccessor
-    view::F
-end
-
-
-"""
-Each field of the in-deconstructing datum will be computed separately.
-Field `extract` depends on your implementation.
-For instance, it can be a function for extracting sub-fields from the composite data
-```
-"""
-struct ManyTimesAccessor{F<:Function} <: AbstractAccessor
-    extract::F
-end
-
-
-struct Recogniser{F}
-    tag::F
-    accessor::AbstractAccessor
-end
 
 PatternImpl = NamedTuple{
-    (
-        :and,
-        :or,
-        :literal,
-        :wildcard,
-        :capture,
-        :decons,
-        :guard,
-        :effect,
-        :metadata
-    )
+    (:and, :or, :literal, :wildcard, :decons, :guard, :effect, :metadata),
 }
 
 
@@ -88,23 +46,6 @@ function wildcard(impls::PatternImpls)
     me
 end
 
-capture(n) = function apply(impls::PatternImpls)
-    me = Vector{Any}(undef, length(impls))
-    for i in eachindex(me)
-        me[i] = impls[i].capture(me, n)
-    end
-    me
-end
-
-decons(recog, ps) = function apply(impls::PatternImpls)
-    xs = [p(impls) for p in ps]
-    me = Vector{Any}(undef, length(impls))
-    for i in eachindex(me)
-        me[i] = impls[i].decons(me, recog, xs)
-    end
-    me
-end
-
 guard(pred) = function apply(impls::PatternImpls)
     me = Vector{Any}(undef, length(impls))
     for i in eachindex(me)
@@ -112,6 +53,25 @@ guard(pred) = function apply(impls::PatternImpls)
     end
     me
 end
+
+identity_view(target, scope, ln) = target
+const no_guard = guard((target, scope, ln) -> true)
+invalid_extract(_, _) = error("impossible")
+
+function decons(tcons; guard=no_guard, view=identity_view, extract=invalid_extract, ps=[])
+    decons(tcons, no_guard, identity_view, invalid_extract, ps)
+end
+decons(tcons, guard, view, extract, ps) = function apply(impls::PatternImpls)
+    xs = [p(impls) for p in ps]
+    me = Vector{Any}(undef, length(impls))
+    guard′ = guard(impls)
+    for i in eachindex(me)
+        me[i] = impls[i].decons(me, tcons, guard′, view, extract, xs)
+    end
+    me
+end
+
+
 
 effect(ctx_perf) = function apply(impls::PatternImpls)
     me = Vector{Any}(undef, length(impls))
@@ -138,9 +98,8 @@ const self = (
     or = or,
     literal = literal,
     wildcard = wildcard,
-    capture = capture,
     decons = decons,
     guard = guard,
     effect = effect,
-    metadata = metadata
+    metadata = metadata,
 )

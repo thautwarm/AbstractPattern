@@ -1,6 +1,6 @@
 @nospecialize
 export TagfulPattern, And, Or,
-       Literal, Wildcard, Capture,
+       Literal, Wildcard,
        Deconstrucution, Guard, Effect,
        untagless, TagfulPattern,
        PatternInfo
@@ -29,12 +29,11 @@ end
 struct Wildcard <: TagfulPattern
 end
 
-struct Capture <: TagfulPattern
-    n :: Union{String, Symbol}
-end
-
 struct Deconstrucution <: TagfulPattern
-    recog :: Recogniser
+    tcons :: Function
+    guard :: PatternInfo
+    view :: Function
+    extract :: Function
     params :: Vector{PatternInfo}
 end
 
@@ -67,8 +66,7 @@ function untagless(points_of_view::Dict{Any, Int})
         or= (_, ps) -> Or(PatternInfo[!e for e in ps]),
         literal = _uncurry_call_argtail(Literal),
         wildcard = _uncurry_call_argtail(Wildcard),
-        capture = _uncurry_call_argtail(Capture),
-        decons = (_, recog, ps) -> Deconstrucution(recog, PatternInfo[!p for p in ps]),
+        decons = (_, tcons, guard, view, extract, ps) -> Deconstrucution(tcons, !guard, view, extract, PatternInfo[!p for p in ps]),
         guard = _uncurry_call_argtail(Guard),
         effect = _uncurry_call_argtail(Effect),
         metadata = (_, term, _) -> term[myviewpoint]

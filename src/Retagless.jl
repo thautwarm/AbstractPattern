@@ -24,12 +24,8 @@ function re_tagless(config :: NamedTuple, p :: Wildcard)
     UserSitgnature.wildcard(config)
 end
 
-function re_tagless(config :: NamedTuple, p :: Capture)
-    UserSitgnature.capture(p.n, config)
-end
-
 function re_tagless(config :: NamedTuple, p :: Deconstrucution)
-    UserSitgnature.decons(p.recog, [re_tagless(p) for p in p.params], config)
+    UserSitgnature.decons(p.tcons, re_tagless(p.guard), p.view, p.extract, [re_tagless(p) for p in p.params], config)
 end
 
 function re_tagless(config :: NamedTuple, p :: Guard)

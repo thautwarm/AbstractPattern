@@ -103,45 +103,46 @@ allsame(xs) = any(e -> e == xs[1], xs)
 function myimpl()
 
     function cache(f)
-        function apply(env, target::Target{true}, checks)
-            target′ = Target{false}(gensym(string(target.repr)), target.type)
-            AndCond(:($(target′.repr) = $(target.repr)), f(env, target′, checks))
+        function apply(env, target::Target{true})
+            target′ = target.with_repr(gensym(string(target.repr)), Val(false))
+            AndCond(
+                :($(target′.repr) = $(target.repr)),
+                f(env, target′)
+            )
         end
-        function apply(env, target::Target{false}, checks)
-            f(env, target, checks)
+        function apply(env, target::Target{false})
+            f(env, target)
         end
         apply
     end
 
-    wildcard(_) = (env, target::Target, checks) -> checks
+    wildcard(_) = (env, target::Target) -> TrueCond()
 
-    capture(sym::Symbol, config) = function (env, target::Target, checks)
-        actual_sym = gensym(sym)
-        env[sym] = actual_sym
-        AndCond(TrueCond(:($actual_sym = target.repr)), checks)
-    end
-    literal(v, config) = function (env, target::Target, checks)
-        AndCond(CheckCond(:($(target.repr) == $v)), checks)
+    literal(v, config) = function (env, target::Target)
+        CheckCond(:($(target.repr) == $v))
     end
 
-    and2(p1, p2) = function (env, target::Target{false}, checks)
-        p1(env, target, p2(env, target, checks))
+    and2(p1, p2) = function (env, target::Target{false})
+        AndCond(
+            p1(env, target),
+            p2(env, target)
+        )
     end
 
     function and(ps, config)
         @assert !isempty(ps)
-        cache(foldr(and2, ps))
+        cache(foldl(and2, ps))
     end
 
 
     function or(ps, config)
         @assert !isempty(ps)
-        function (env, target::Target{false}, checks)
+        function (env, target::Target{false})
             or_checks = Cond[]
             envs = Dict{Symbol,Symbol}[]
             for p in ps
                 let env′ = copy(env)
-                    push!(or_checks, p(env′, target, TrueCond(true)))
+                    push!(or_checks, p(env′, target.clone))
                     push!(envs, env′)
                 end
             end
@@ -169,59 +170,51 @@ function myimpl()
                     env[key] = envs[end][key]
                 end
             end
-
-            AndCond(foldr(OrCond, or_checks), checks)
+            foldr(OrCond, or_checks)
         end |> cache
     end
 
     # C(p1, p2, .., pn)
     # pattern = (target: code, remainder: code) -> code
-    function decons(recog, args, config)
-        accessor = recog.accessor
-        n_args = length(args)
+    function decons(_, guard, view, extract, ps, config)
         ty = config.type
-        if accessor isa ManyTimesAccessor
-            function (env, target::Target{false}, checks)
-                checks = foldr(1:n_args, init = checks) do i, last
-                    sub_tag = Target{true}(accessor.extract(target.repr, i, n_args), Any)
-                    args[i](env, sub_tag, last)
-                end
-                if target.type <: ty
-                    # no need for type check
-                    checks
-                else
-                    AndCond(CheckCond(:($(target.repr) isa $ty)), checks)
-                end
-            end |> cache
-        elseif accessor isa OnceAccessor
-            function (env, target::Target{false}, checks)
-                target′ = Target{false}(gensym("once"), target.type)
-
-                checks = foldr(1:n_args, init = checks) do i, last
-                    sub_tag = Target{true}(:($(target′.repr)[$i]), Any)
-                    args[i](env, sub_tag, last)
-                end
-                head_check =
-                    TrueCond(:($(target′.repr) = $(accessor.view(target.repr, n_args))))
-                if !(target.tyoe <: ty)
-                    # need for type check/narrowing
-                    head_check =
-                        AndCond(CheckCond(:($(target.repr) isa $ty)), head_check)
-                end
-                AndCond(head_check, checks)
-            end |> cache
-        else
-            error("contact me to add new builtin accessors?")
+        function (env, target::Target{false})
+            chk = if target.type <: ty
+                TrueCond()
+            else
+                target.type_narrow!(ty)
+                CheckCond(:($(target.repr) isa $ty))
+            end
+            chk = AndCond(chk, guard(env, target))
+            
+            if view === AbstractPattern.identity_view
+                sym = target.repr
+            else
+                sym = gensym(string(target.repr))
+                chk = AndCond(
+                    chk,
+                    TrueCond(:($sym = $(view(sym, env, config.ln))))
+                )
+            end
+            for i in eachindex(ps)
+                field_target = Target{true}(extract(sym, i), Ref{TypeObject}(Any))
+                chk = AndCond(chk, ps[i](env, field_target))
+            end
+            chk
         end
     end
 
-    guard(pred, config) =
-        function (env, target::Target{false}, checks)
-            AndCond(CheckCond(pred(target.repr, env, config.ln)), checks)
+    function guard(pred, config)
+        function (env, target::Target{false})
+            expr = pred(target.repr, env, config.ln)
+            expr === true ? TrueCond() : CheckCond(expr)
         end |> cache
+    end
 
-    effect(perf, config) = function (env, target::Target, checks)
-        AndCond(TrueCond(perf(target.repr, env, config.ln)), checks)
+    function effect(perf, config)
+        function (env, target::Target{false})
+            TrueCond(perf(target.repr, env, config.ln))
+        end |> cache
     end
 
     (
@@ -229,7 +222,6 @@ function myimpl()
         or = or,
         literal = literal,
         wildcard = wildcard,
-        capture = capture,
         decons = decons,
         guard = guard,
         effect = effect,
@@ -247,14 +239,14 @@ function compile_spec!(
     if IsComplex && !(x.case isa Leaf)
         sym = gensym(string(target.repr))
         push!(suite, :($sym = $(target.repr)))
-        target = Target{false}(sym, target.type)
+        target = target.with_repr(sym, Val(false))
     end
     mkcond = re_tagless(x.pattern)(redy_impl)
     ln = x.pattern.metatag
     if !isnothing(ln)
         push!(suite, ln)
     end
-    cond = mkcond(scope, target, TrueCond())
+    cond = mkcond(scope, target)
     conditional_expr = to_expression(cond)
     true_clause = Expr(:block)
     compile_spec!(scope, true_clause.args, x.case, target)
@@ -281,14 +273,14 @@ function compile_spec!(
     if IsComplex
         sym = gensym(string(target.repr))
         push!(suite, :($sym = $(target.repr)))
-        target = Target{false}(sym, target.type)
+        target = target.with_repr(sym, Val(false))
     else
         sym = target.repr
     end
 
     for (ty, case) in x.cases
         true_clause = Expr(:block)
-        compile_spec!(copy(scope), true_clause.args, case, Target{false}(sym, ty))
+        compile_spec!(copy(scope), true_clause.args, case, target.with_type(ty))
         push!(suite, Expr(:if, :($sym isa $ty), true_clause))
     end
 end
@@ -302,17 +294,17 @@ function compile_spec!(
     if IsComplex
         sym = gensym(string(target.repr))
         push!(suite, :($sym = $(target.repr)))
-        target = Target{false}(sym, target.type)
-
+        target = target.with_repr(sym, Val(false))
     end
     for case in x.cases
-        compile_spec!(copy(scope), suite, case, target)
+        compile_spec!(copy(scope), suite, case, target.clone)
     end
 end
 
 function compile_spec(target::Any, case::AbstractCase, ln::Union{LineNumberNode,Nothing})
-    target = target isa Symbol ? Target{false}(target, Any) :
-        Target{true}(target, Any)
+    target = target isa Symbol ?
+        Target{false}(target, Ref{TypeObject}(Any)) :
+        Target{true}(target, Ref{TypeObject}(Any))
 
 
     ret = Expr(:block)
