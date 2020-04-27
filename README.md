@@ -29,6 +29,16 @@ extensibility, etc.
 `compile_spec` is my flavoured implementation, which generates Julia AST:
 
 ```julia
+donothing_acc = ManyTimesAccessor(
+    _ -> 0,
+    (_, _) -> error("impossible")
+)
+
+type_of(t) =
+    let recog_type(_...) = t
+        decons(Recogniser(recog_type, donothing_acc), [])
+    end
+
 case = spec_gen(
     or(
         literal(1),
@@ -37,10 +47,13 @@ case = spec_gen(
 
     literal(2) => :b,
 
-    guard((target, scope, ln) -> :some_cond)  => :c,
+    guard((_, _, _) -> :some_cond) => :c,
+    
+    type_of(Symbol) => :d,
 
-    literal(1) => :d
+    literal(3) => :e
 )
+
 
 code =
     compile_spec(case,
@@ -71,9 +84,16 @@ begin
     if some_cond
         #= line 267 =# @goto c
     end
-    if var"##do_something()#253" == 1
-        #= line 267 =# @goto d
+    if Int64 isa var"##do_something()#253"
+        if var"##do_something()#253" == 3
+            #= line 267 =# @goto e
+        end
     end
-    error("no pattern matched, at $(ln)")
+    if Symbol isa var"##do_something()#253"
+        if var"##do_something()#253" isa Symbol
+            #= line 267 =# @goto d
+        end
+    end
+    error("no pattern matched")
 end
 ```

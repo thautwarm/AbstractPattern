@@ -10,6 +10,17 @@ end
 function PrettyPrint.pprint_impl(io, ::Type{T}, indent, newline) where T
     print(io, repr(T))
 end
+
+donothing_acc = ManyTimesAccessor(
+    _ -> 0,
+    (_, _) -> error("impossible")
+)
+
+type_of(t) =
+    let recog_type(_...) = t
+        decons(Recogniser(recog_type, donothing_acc), [])
+    end
+
 case = spec_gen(
     or(
         literal(1),
@@ -17,8 +28,12 @@ case = spec_gen(
     ) => :a,
 
     literal(2) => :b,
-    guard((target, scope, ln) -> :some_cond)  => :c,
-    literal(1) => :d
+
+    guard((_, _, _) -> :some_cond) => :c,
+    
+    type_of(Symbol) => :d,
+
+    literal(3) => :e
 )
 
 # pprint(case)
