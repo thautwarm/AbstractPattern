@@ -119,7 +119,7 @@ function myimpl()
     wildcard(_) = (env, target::Target) -> TrueCond()
 
     literal(v, config) = function (env, target::Target)
-        CheckCond(:($(target.repr) == $v))
+        CheckCond(:($(target.repr) == $(QuoteNode(v))))
     end
 
     and2(p1, p2) = function (env, target::Target{false})
