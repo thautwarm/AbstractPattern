@@ -26,40 +26,34 @@ extensibility, etc.
 
 `spec_gen` is an abstract thing.
 
-`compile_spec` is my flavoured implementation, which generates Julia AST:
+All pattern matching implementations based on this framework, like `implementations/RedyFlavoured.jl`,
+can use abstractions from the directory `∀`, where many composite patterns(`tuple`, `vector`, and other deconstructors) are provided.
+
+`RedyFlavoured` is my flavoured implementation, which generates Julia AST in the following way:
 
 ```julia
-donothing_acc = ManyTimesAccessor(
-    _ -> 0,
-    (_, _) -> error("impossible")
+using AbstractPattern
+using Test
+
+backend = MK(RedyFlavoured)
+
+code = backend(
+    :val,
+    [
+        or(
+            literal(1),
+            literal("string"),
+        ) => :a,
+
+        literal(2) => :b,
+
+        guard((_, _, _) -> :some_cond) => :c,
+        
+        P_type_of(Symbol) => :d,
+
+        literal(3) => :e
+    ]
 )
-
-type_of(t) =
-    let recog_type(_...) = t
-        decons(Recogniser(recog_type, donothing_acc), [])
-    end
-
-case = spec_gen(
-    or(
-        literal(1),
-        literal("string"),
-    ) => :a,
-
-    literal(2) => :b,
-
-    guard((_, _, _) -> :some_cond) => :c,
-    
-    type_of(Symbol) => :d,
-
-    literal(3) => :e
-)
-
-
-code =
-    compile_spec(case,
-        :(do_something()),
-        nothing
-    )
 
 println(code)
 ```
@@ -67,31 +61,30 @@ println(code)
 
 ```julia
 begin
-    var"##do_something()#253" = do_something()
-    if String isa var"##do_something()#253"
-        if var"##do_something()#253" == "string"
-            #= line 267 =# @goto a
+    if String isa val
+        if val == "string"
+            #= line 265 =# @goto a
         end
     end
-    if Int64 isa var"##do_something()#253"
-        if var"##do_something()#253" == 1
-            #= line 267 =# @goto a
+    if Int64 isa val
+        if val == 1
+            #= line 265 =# @goto a
         end
-        if var"##do_something()#253" == 2
-            #= line 267 =# @goto b
+        if val == 2
+            #= line 265 =# @goto b
         end
     end
     if some_cond
-        #= line 267 =# @goto c
+        #= line 265 =# @goto c
     end
-    if Int64 isa var"##do_something()#253"
-        if var"##do_something()#253" == 3
-            #= line 267 =# @goto e
+    if Int64 isa val
+        if val == 3
+            #= line 265 =# @goto e
         end
     end
-    if Symbol isa var"##do_something()#253"
-        if var"##do_something()#253" isa Symbol
-            #= line 267 =# @goto d
+    if Symbol isa val
+        begin
+            #= line 265 =# @goto d
         end
     end
     error("no pattern matched")

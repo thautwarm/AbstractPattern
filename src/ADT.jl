@@ -46,6 +46,14 @@ struct Effect <: TagfulPattern
     perform :: Any
 end
 
+@specialize
+function _uncurry_call_argtail(f)
+    function (_, args...)
+        f(args...)
+    end
+end
+@nospecialize
+
 function untagless(points_of_view::Dict{Any, Int})
     myviewpoint = points_of_view[untagless]
     metaviewpoint = points_of_view[term_position]
@@ -55,15 +63,15 @@ function untagless(points_of_view::Dict{Any, Int})
     )
     ! = mk_info
     (
-        and = ps -> And(PatternInfo[!e for e in ps]),
-        or= ps -> Or(PatternInfo[!e for e in ps]),
-        literal = Literal,
-        wildcard = Wildcard(),
-        capture = Capture,
-        decons = (recog, ps) -> Deconstrucution(recog, PatternInfo[!p for p in ps]),
-        guard = Guard,
-        effect = Effect,
-        metadata = (term, _) -> term[myviewpoint]
+        and = (_, ps) -> And(PatternInfo[!e for e in ps]),
+        or= (_, ps) -> Or(PatternInfo[!e for e in ps]),
+        literal = _uncurry_call_argtail(Literal),
+        wildcard = _uncurry_call_argtail(Wildcard),
+        capture = _uncurry_call_argtail(Capture),
+        decons = (_, recog, ps) -> Deconstrucution(recog, PatternInfo[!p for p in ps]),
+        guard = _uncurry_call_argtail(Guard),
+        effect = _uncurry_call_argtail(Effect),
+        metadata = (_, term, _) -> term[myviewpoint]
     )
 end
 @specialize    

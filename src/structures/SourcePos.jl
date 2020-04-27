@@ -5,7 +5,7 @@ i.e. the line number node.
 function term_position(points_of_view::Dict{Any, Int})
     viewpoint = points_of_view[term_position]
 
-    function and(ps)
+    function and(_, ps)
         res = getindex.(ps, viewpoint)
         i = findfirst(!isnothing, res)
         if i === nothing
@@ -15,7 +15,7 @@ function term_position(points_of_view::Dict{Any, Int})
         end
     end
 
-    function or(ps)
+    function or(_, ps)
         res = getindex.(ps, viewpoint)
         i = findfirst(!isnothing, res)
         if i === nothing
@@ -25,12 +25,12 @@ function term_position(points_of_view::Dict{Any, Int})
         end
     end
 
-    literal(_) = nothing
-    wildcard = nothing
+    literal(_, _) = nothing
+    wildcard(_) = nothing
 
-    capture(_) = nothing
+    capture(_, _) = nothing
 
-    function decons(_, ps)
+    function decons(_, _, ps)
         res = getindex.(ps, viewpoint)
         i = findfirst(!isnothing, res)
         if i === nothing
@@ -40,9 +40,9 @@ function term_position(points_of_view::Dict{Any, Int})
         end
     end
 
-    guard(_) = nothing
-    effect(_) = nothing
-    metadata(_, location) = location
+    guard(_, _) = nothing
+    effect(_, _) = nothing
+    metadata(_, _, location) = location
 
     (
         and = and,

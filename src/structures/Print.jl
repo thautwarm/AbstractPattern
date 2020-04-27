@@ -4,7 +4,7 @@
 function pretty(points_of_view::Dict{Any, Int})
     viewpoint = points_of_view[pretty]
 
-    function and(ps)
+    function and(_, ps)
         xs = Any[Print.w("(")]
         for p in ps
             push!(xs, p[viewpoint])
@@ -17,7 +17,7 @@ function pretty(points_of_view::Dict{Any, Int})
         Print.seq(xs...)
     end
 
-    function or(ps)
+    function or(_, ps)
         xs = Any[Print.w("(")]
         for p in ps
             push!(xs, p[viewpoint])
@@ -29,41 +29,26 @@ function pretty(points_of_view::Dict{Any, Int})
         end
         Print.seq(xs...)
     end
-    literal(val) = Print.w(string(val))
-    wildcard = Print.w("_")
-    function switch(cases, otherwise)
-        xs = [Print.w("switch")]
-        inner = []
-        for (tag, p) in cases
-            push!(inner, Print.line)
-            push!(inner, Print.w(repr(tag)))
-            push!(inner, Print.w(" => "))
-            push!(inner, p[viewpoint])
-        end
-        Print.seq(
-            Print.w("switch"),
-            Print.indent(Print.seq(inner...)),
-            Print.line
-        )
-    end
-
-    function capture(n)
+    literal(_, val) = Print.w(string(val))
+    wildcard(_) = Print.w("_")
+    
+    function capture(_, n)
         Print.seq(Print.w(repr(n)))
     end
     
-    function decons(recog, ps)
+    function decons(_, recog, ps)
         Print.seq(Print.w(repr(recog.tag)), Print.w("("), getindex.(ps, viewpoint)..., Print.w(")"))
     end
 
-    function guard(pred)
+    function guard(_, pred)
         Print.seq(Print.w("when("), Print.w(repr(pred)), Print.w(")"))
     end
 
-    function effect(eff)
+    function effect(_, eff)
         Print.seq(Print.w("do("), Print.w(repr(eff)), Print.w(")"))
     end
 
-    function metadata(term, loc)
+    function metadata(_, term, loc)
         Print.seq(term[viewpoint], Print.w("#{"), Print.w(repr(loc)), Print.w("}"))
     end
 
@@ -72,7 +57,6 @@ function pretty(points_of_view::Dict{Any, Int})
         or = or,
         literal = literal,
         wildcard = wildcard,
-        switch = switch,
         capture = capture,
         decons = decons,
         guard = guard,

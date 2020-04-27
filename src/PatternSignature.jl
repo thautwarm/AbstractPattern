@@ -1,5 +1,5 @@
 struct PatternCompilationError <: Exception
-    line::LineNumberNode
+    line:: Union{LineNumberNode, Nothing}
     msg::AbstractString
 end
 
@@ -12,26 +12,8 @@ To avoid redundant computations when deconstructing:
 we just calculate a tuple(hereafter `viewed`) from the in-deconstructing datum,
 and do pattern matching on the returned tuple `viewed`.
 
-e.g., for active patterns/view patterns
-    ```
-    MyPattern_accessor = 
-        OnceAccessor(
-            function (x)
-                if x < 2
-                    x * 2, g(x)
-                else
-                    (x, x)
-                end
-            end
-        )
-    @match 1 begin
-        MyPattern(a, b) => a + b
-    end
-    <=>
-    @match MyPattern_accessor.view(1) begin
-        (a, b) => a + b
-    end
-    ```
+Field `view` depends on your implementation.
+For instance, it can be a function to transform a composite datum to a tuple.
 """
 struct OnceAccessor{F<:Function} <: AbstractAccessor
     view::F
@@ -40,37 +22,11 @@ end
 
 """
 Each field of the in-deconstructing datum will be computed separately.
-```
-MyPattern_accessor = 
-    ManyTimesAccessor(
-        let
-            len(_) = 0
-            len(_::Int) = 2
-            len
-        end,
-        function (x, i)
-            if i == 1
-                return x + 2
-            else
-                return 3
-            end
-        end
-    )
-@match 1 begin
-    MyPattern(a, b) => a + b
-end
-<=>
-var = 1
-@match MyPattern_accessor.extract(var, 1) begin
-    a =>
-        @match MyPattern_accessor.extract(var, 2) begin
-            b => a + b
-        end
-end
+Field `extract` depends on your implementation.
+For instance, it can be a function for extracting sub-fields from the composite data
 ```
 """
-struct ManyTimesAccessor{Len<:Function,F<:Function} <: AbstractAccessor
-    length_of::Len
+struct ManyTimesAccessor{F<:Function} <: AbstractAccessor
     extract::F
 end
 
@@ -101,60 +57,78 @@ PatternImpls = Vector{PatternImpl}
 and(args...) = and(collect(args))
 and(ps::Vector) = function apply(impls::PatternImpls)
     xs = [p(impls) for p in ps]
-    map(impls) do impl
-        impl.and(xs)
+    me = Vector{Any}(undef, length(impls))
+    for i in eachindex(me)
+        me[i] = impls[i].and(me, xs)
     end
+    me
 end
 
 or(args...) = or(collect(args))
 or(ps::Vector) = function apply(impls::PatternImpls)
     xs = [p(impls) for p in ps]
-    map(impls) do impl
-        impl.or(xs)
+    me = Vector{Any}(undef, length(impls))
+    for i in eachindex(me)
+        me[i] = impls[i].or(me, xs)
     end
+    me
 end
 literal(val) = function apply(impls::PatternImpls)
-    map(impls) do impl
-        impl.literal(val)
+    me = Vector{Any}(undef, length(impls))
+    for i in eachindex(me)
+        me[i] = impls[i].literal(me, val)
     end
+    me
 end
 function wildcard(impls::PatternImpls)
-    map(impls) do impl
-        impl.wildcard
+    me = Vector{Any}(undef, length(impls))
+    for i in eachindex(me)
+        me[i] = impls[i].wildcard(me)
     end
+    me
 end
 
 capture(n) = function apply(impls::PatternImpls)
-    map(impls) do impl
-        impl.capture(n)
+    me = Vector{Any}(undef, length(impls))
+    for i in eachindex(me)
+        me[i] = impls[i].capture(me, n)
     end
+    me
 end
 
 decons(recog, ps) = function apply(impls::PatternImpls)
     xs = [p(impls) for p in ps]
-    map(impls) do impl
-        impl.decons(recog, xs)
+    me = Vector{Any}(undef, length(impls))
+    for i in eachindex(me)
+        me[i] = impls[i].decons(me, recog, xs)
     end
+    me
 end
 
 guard(pred) = function apply(impls::PatternImpls)
-    map(impls) do impl
-        impl.guard(pred)
+    me = Vector{Any}(undef, length(impls))
+    for i in eachindex(me)
+        me[i] = impls[i].guard(me, pred)
     end
+    me
 end
 
 effect(ctx_perf) = function apply(impls::PatternImpls)
-    map(impls) do impl
-        impl.effect(ctx_perf)
+    me = Vector{Any}(undef, length(impls))
+    for i in eachindex(me)
+        me[i] = impls[i].effect(me, ctx_perf)
     end
+    me
 end
 
 function metadata(term, location)
     function apply(impls::PatternImpls)
         x = term(impls)
-        tp = map(impls) do impl
-            impl.metadata(x, location)
+        me = Vector{Any}(undef, length(impls))
+        for i in eachindex(me)
+            me[i] = impls[i].metadata(me, x, location)
         end
+        me
     end
 end
 @specialize

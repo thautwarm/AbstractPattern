@@ -7,39 +7,45 @@ function tag_extract(points_of_view::Dict{Any, Int})
     viewpoint = points_of_view[tag_extract]
     viewpos = points_of_view[term_position]
 
-    function and(many)
+    function and(me, many)
         @assert !isempty(many)
         ts = getindex.(many, viewpoint)
         t = reduce(typeintersect, ts)
         if t === Base.Bottom
             core_msg = "and patterns require an intersection of $(ts), which seems empty!"
-            linenumbernodes = filter(!isnothing, [e[viewpos] for e in many])
-            isnothing(viewpos) || isempty(linenumbernodes) ? error(core_msg) :
-            throw(PatternCompilationError(linenumbernodes[1], core_msg))
+            linenumbernode = me[viewpos]
+            throw(PatternCompilationError(linenumbernode, core_msg))
         end
         t
     end
 
-    function or(many)
+    function or(_, many)
         ts = getindex.(many, viewpoint)
         Union{ts...}
     end
 
-    function literal(val)
+    function literal(_, val)
         typeof(val)
     end
 
-    wildcard = Any
-    capture(_) = Any
+    wildcard(_) = Any
+    capture(_, _) = Any
 
-    function decons(recog, ns)
+    function decons(me, recog, ns)
         args = getindex.(ns, viewpoint)
-        recog.tag(args...)
+        try
+            recog.tag(args...)
+        catch e
+            if e isa MethodError && e.f === recog.tag
+                throw(PatternCompilationError(me[viewpos], "invalid arguments for deconstructor $recog"))
+            end
+            rethrow()
+        end
     end
 
-    guard(_) = Any
-    effect(_) = Any
-    metadata(term, _) = term[viewpoint]
+    guard(_, _) = Any
+    effect(_, _) = Any
+    metadata(_, term, _) = term[viewpoint]
 
     (
         and = and,

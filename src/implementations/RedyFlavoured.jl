@@ -1,5 +1,4 @@
 module RedyFlavoured
-
 using AbstractPattern
 
 abstract type Cond end
@@ -21,10 +20,6 @@ TrueCond() = TrueCond(true)
 
 struct CheckCond <: Cond
     expr::Any
-end
-
-struct Target{IsComplex}
-    repr::Any
 end
 
 """
@@ -109,7 +104,7 @@ function myimpl()
 
     function cache(f)
         function apply(env, target::Target{true}, checks)
-            target′ = Target{false}(gensym(string(target.repr)))
+            target′ = Target{false}(gensym(string(target.repr)), target.type)
             AndCond(:($(target′.repr) = $(target.repr)), f(env, target′, checks))
         end
         function apply(env, target::Target{false}, checks)
@@ -188,26 +183,32 @@ function myimpl()
         if accessor isa ManyTimesAccessor
             function (env, target::Target{false}, checks)
                 checks = foldr(1:n_args, init = checks) do i, last
-                    sub_tag = Target{true}(accessor.extract(target.repr, i))
+                    sub_tag = Target{true}(accessor.extract(target.repr, i, n_args), Any)
                     args[i](env, sub_tag, last)
                 end
-                AndCond(CheckCond(:($(target.repr) isa $ty)), checks)
+                if target.type <: ty
+                    # no need for type check
+                    checks
+                else
+                    AndCond(CheckCond(:($(target.repr) isa $ty)), checks)
+                end
             end |> cache
         elseif accessor isa OnceAccessor
             function (env, target::Target{false}, checks)
-                target′ = Target{false}(gensym("once"))
+                target′ = Target{false}(gensym("once"), target.type)
 
                 checks = foldr(1:n_args, init = checks) do i, last
-                    sub_tag = Target{true}(:($(target′.repr)[$i]))
+                    sub_tag = Target{true}(:($(target′.repr)[$i]), Any)
                     args[i](env, sub_tag, last)
                 end
-                AndCond(
-                    AndCond(
-                        CheckCond(:($(target.repr) isa $ty)),
-                        TrueCond(:($(target′.repr) = $(accessor.view(target.repr)))),
-                    ),
-                    checks,
-                )
+                head_check =
+                    TrueCond(:($(target′.repr) = $(accessor.view(target.repr, n_args))))
+                if !(target.tyoe <: ty)
+                    # need for type check/narrowing
+                    head_check =
+                        AndCond(CheckCond(:($(target.repr) isa $ty)), head_check)
+                end
+                AndCond(head_check, checks)
             end |> cache
         else
             error("contact me to add new builtin accessors?")
@@ -216,10 +217,7 @@ function myimpl()
 
     guard(pred, config) =
         function (env, target::Target{false}, checks)
-            AndCond(
-                CheckCond(pred(target.repr, env, config.ln)),
-                checks,
-            )
+            AndCond(CheckCond(pred(target.repr, env, config.ln)), checks)
         end |> cache
 
     effect(perf, config) = function (env, target::Target, checks)
@@ -243,12 +241,12 @@ const redy_impl = myimpl()
 function compile_spec!(
     suite::Vector{Any},
     x::Shaped,
-    target::Target{IsComplex}
+    target::Target{IsComplex},
 ) where {IsComplex}
     if IsComplex && !(x.case isa Leaf)
         sym = gensym(string(target.repr))
         push!(suite, :($sym = $(target.repr)))
-        target = Target{false}(sym)
+        target = Target{false}(sym, target.type)
     end
     mkcond = re_tagless(x.pattern)(redy_impl)
     scope = Dict{Symbol,Symbol}()
@@ -256,65 +254,58 @@ function compile_spec!(
     conditional_expr = to_expression(cond)
     true_clause = Expr(:block)
     compile_spec!(true_clause.args, x.case, target)
-    push!(suite, Expr(:if, conditional_expr, true_clause))
+    push!(suite, 
+        conditional_expr === true ?
+            true_clause :
+            Expr(:if, conditional_expr, true_clause)
+    )
 end
 
 function compile_spec!(suite::Vector{Any}, x::Leaf, target::Target)
-    push!(suite, 
-        Expr(
-            :macrocall,
-            Symbol("@goto"),
-            LineNumberNode(@__LINE__),
-            x.cont
-        )
-    )
+    push!(suite, Expr(:macrocall, Symbol("@goto"), LineNumberNode(@__LINE__), x.cont))
 end
 
 function compile_spec!(
     suite::Vector{Any},
     x::SwitchCase,
-    target::Target{IsComplex}
+    target::Target{IsComplex},
 ) where {IsComplex}
     if IsComplex
         sym = gensym(string(target.repr))
         push!(suite, :($sym = $(target.repr)))
-        target = Target{false}(sym)
+        target = Target{false}(sym, target.type)
+    else
+        sym = target.repr
     end
+
     for (ty, case) in x.cases
         true_clause = Expr(:block)
-        compile_spec!(true_clause.args, case, target)
-        push!(suite, Expr(
-            :if,
-            :($ty isa $(target.repr)),
-            true_clause
-        ))
+        compile_spec!(true_clause.args, case, Target{false}(sym, ty))
+        push!(suite, Expr(:if, :($ty isa $sym), true_clause))
     end
 end
 
 function compile_spec!(
     suite::Vector{Any},
     x::EnumCase,
-    target::Target{IsComplex}
+    target::Target{IsComplex},
 ) where {IsComplex}
     if IsComplex
         sym = gensym(string(target.repr))
         push!(suite, :($sym = $(target.repr)))
-        target = Target{false}(sym)
+        target = Target{false}(sym, target.type)
+
     end
     for case in x.cases
         compile_spec!(suite, case, target)
     end
 end
 
-function _compile_spec(
-    case :: AbstractCase,
-    target :: Any,
-    ln :: Union{LineNumberNode, Nothing}
-)
-    target = target isa Symbol ?
-        Target{false}(target) :
-        Target{true}(target)
-    
+function compile_spec(target::Any, case::AbstractCase, ln::Union{LineNumberNode,Nothing})
+    target = target isa Symbol ? Target{false}(target, Any) :
+        Target{true}(target, Any)
+
+
     ret = Expr(:block)
     suite = ret.args
     compile_spec!(suite, case, target)
@@ -325,6 +316,19 @@ function _compile_spec(
     else
         push!(suite, :(error("no pattern matched")))
     end
-    ret
+    length(suite) === 1 ?
+        suite[1] :
+        ret
+end
+
+"""compile a series of `Term => Symbol`(branches) to a Julia expression
+"""
+function backend(
+    expr_to_match::Any,
+    branches::Vector{Pair{F,Symbol}},
+    ln::Union{LineNumberNode,Nothing} = nothing,
+) where {F<:Function}
+    spec = spec_gen(branches)
+    compile_spec(expr_to_match, spec, ln)
 end
 end
