@@ -59,7 +59,7 @@ const no_guard = guard((target, scope, ln) -> true)
 invalid_extract(_, _) = error("impossible")
 
 function decons(tcons; guard=no_guard, view=identity_view, extract=invalid_extract, ps=[])
-    decons(tcons, no_guard, identity_view, invalid_extract, ps)
+    decons(tcons, guard, view, extract, ps)
 end
 decons(tcons, guard, view, extract, ps) = function apply(impls::PatternImpls)
     xs = [p(impls) for p in ps]

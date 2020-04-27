@@ -43,7 +43,7 @@ function build_readable_expression!(
     following_stmts::Vector{Any},
     cond::TrueCond,
 )
-    cond.stmt === true && return
+    cond.stmt isa Union{Bool, Int, Float64, Nothing} #= shall contain more literal typs =# && return
     push!(following_stmts, cond.stmt)
     nothing
 end
@@ -106,7 +106,7 @@ function myimpl()
         function apply(env, target::Target{true})
             target′ = target.with_repr(gensym(string(target.repr)), Val(false))
             AndCond(
-                :($(target′.repr) = $(target.repr)),
+                TrueCond(:($(target′.repr) = $(target.repr))),
                 f(env, target′)
             )
         end
@@ -150,7 +150,7 @@ function myimpl()
             # check the change of scope discrepancies for all branches
             all_keys = union!(Set{Symbol}(), map(keys, envs)...)
             for key in all_keys
-                if !allsame(env[key] for env in envs)
+                if !allsame(Symbol[env[key] for env in envs])
                     refresh = gensym(key)
 
                     for i in eachindex(or_checks)
@@ -201,7 +201,7 @@ function myimpl()
                 chk = AndCond(chk, ps[i](env, field_target))
             end
             chk
-        end
+        end |> cache
     end
 
     function guard(pred, config)

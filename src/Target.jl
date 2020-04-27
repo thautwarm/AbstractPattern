@@ -1,4 +1,4 @@
-TypeObject = Union{DataType, Union}
+TypeObject = Union{DataType, Union, UnionAll}
 
 """representing the in-matching object in pattern compile time
 """
