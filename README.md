@@ -13,66 +13,67 @@ Also, when using view patterns, it turns out to be hard to get rid of.redundant 
 This project, is dedicated for optimizing above performance issues.
 
 
+## Other Features
+
+1. Implementations following this design require **no runtime system**, hence we can make pattern matching library only a develop time dependency. I already made one, in `implementations/RedyFlavoured.jl`.
+
+2. The generated code is much more readable!
+
+
+extensibility, etc.
+
 ## Preview
 
+`spec_gen` is an abstract thing.
+
+`compile_spec` is my flavoured implementation, which generates Julia AST:
+
 ```julia
-spec_gen(
+case = spec_gen(
     or(
         literal(1),
         literal("string"),
-    ) => 1,
-    
-    literal(2) => 2
+    ) => :a,
+
+    literal(2) => :b,
+
+    guard((target, scope, ln) -> :some_cond)  => :c,
+
+    literal(1) => :d
 )
+
+code =
+    compile_spec(case,
+        :(do_something()),
+        nothing
+    )
+
+println(code)
+```
 =>
-AbstractPattern.SwitchCase(
-  cases=(
-    Pair{Union{DataType, Union},AbstractPattern.AbstractCase}(
-      first=String,
-      second=AbstractPattern.Shaped(
-        pattern=PatternInfo(
-          pattern=Literal{String}(
-            val="string",
-          ),
-          metatag=nothing,
-          typetag=String,
-        ),
-        case=AbstractPattern.Leaf(
-          cont=1,
-        ),
-      ),
-    ),
-    Pair{Union{DataType, Union},AbstractPattern.AbstractCase}(
-      first=Int64,
-      second=AbstractPattern.EnumCase(
-        cases=[
-          AbstractPattern.Shaped(
-            pattern=PatternInfo(
-              pattern=Literal{Int64}(
-                val=1,
-              ),
-              metatag=nothing,
-              typetag=Int64,
-            ),
-            case=AbstractPattern.Leaf(
-              cont=1,
-            ),
-          ),
-          AbstractPattern.Shaped(
-            pattern=PatternInfo(
-              pattern=Literal{Int64}(
-                val=2,
-              ),
-              metatag=nothing,
-              typetag=Int64,
-            ),
-            case=AbstractPattern.Leaf(
-              cont=2,
-            ),
-          ),
-        ],
-      ),
-    ),
-  ),
-)
+
+```julia
+begin
+    var"##do_something()#253" = do_something()
+    if String isa var"##do_something()#253"
+        if var"##do_something()#253" == "string"
+            #= line 267 =# @goto a
+        end
+    end
+    if Int64 isa var"##do_something()#253"
+        if var"##do_something()#253" == 1
+            #= line 267 =# @goto a
+        end
+        if var"##do_something()#253" == 2
+            #= line 267 =# @goto b
+        end
+    end
+    if some_cond
+        #= line 267 =# @goto c
+    end
+    if var"##do_something()#253" == 1
+        #= line 267 =# @goto d
+    end
+    error("no pattern matched, at $(ln)")
+end
 ```

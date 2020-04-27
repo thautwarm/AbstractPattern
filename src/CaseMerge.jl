@@ -1,6 +1,9 @@
 abstract type AbstractCase end
+export AbstractCase, EnumCase, SwitchCase,
+       Leaf, Shaped
 
-Branch = Pair{PatternInfo, Int}
+Continuation = Symbol
+Branch = Pair{PatternInfo, Continuation}
 
 """for generating patterns with one-by-one checks
 """
@@ -17,7 +20,7 @@ end
 """specifying the code body of a case
 """
 struct Leaf <: AbstractCase
-    cont :: Int
+    cont :: Continuation
 end
 
 """checking the shape of the datum with the defined patterns

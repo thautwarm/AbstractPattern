@@ -1,4 +1,5 @@
 # restore tagless final encoding from Core
+export re_tagless
 
 @nospecialize
 function re_tagless(pi :: PatternInfo)

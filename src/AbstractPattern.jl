@@ -1,9 +1,9 @@
 module AbstractPattern
 
-export spec_gen, runterm
+export spec_gen, runterm, compile_spec
 export and, or, literal, and, wildcard, capture, decons,
        guard, effect, metadata, self
-export PatternCompilationError, AbstractAccessor, PureAccessor,
+export PatternCompilationError, AbstractAccessor,
        OnceAccessor, ManyTimesAccessor, Recogniser, PatternImpl
 
 TypeObject = Union{DataType, Union}
@@ -17,6 +17,9 @@ include("ADT.jl")
 include("CaseMerge.jl")
 include("UserSignature.jl")
 include("Retagless.jl")
+include("implementations/RedyFlavoured.jl")
+
+const compile_spec = RedyFlavoured._compile_spec
 
 @nospecialize
 function runterm(term, xs)
