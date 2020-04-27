@@ -239,6 +239,7 @@ end
 const redy_impl = myimpl()
 
 function compile_spec!(
+    scope :: Dict{Symbol, Symbol},
     suite::Vector{Any},
     x::Shaped,
     target::Target{IsComplex},
@@ -253,11 +254,10 @@ function compile_spec!(
     if !isnothing(ln)
         push!(suite, ln)
     end
-    scope = Dict{Symbol,Symbol}()
     cond = mkcond(scope, target, TrueCond())
     conditional_expr = to_expression(cond)
     true_clause = Expr(:block)
-    compile_spec!(true_clause.args, x.case, target)
+    compile_spec!(scope, true_clause.args, x.case, target)
     push!(suite, 
         conditional_expr === true ?
             true_clause :
@@ -265,11 +265,15 @@ function compile_spec!(
     )
 end
 
-function compile_spec!(suite::Vector{Any}, x::Leaf, target::Target)
+function compile_spec!(scope :: Dict{Symbol, Symbol}, suite::Vector{Any}, x::Leaf, target::Target)
+    for (k, v) in scope
+        push!(suite, :($k = $v))  # hope this gets optimized to move semantics...
+    end
     push!(suite, Expr(:macrocall, Symbol("@goto"), LineNumberNode(@__LINE__), x.cont))
 end
 
 function compile_spec!(
+    scope :: Dict{Symbol, Symbol},
     suite::Vector{Any},
     x::SwitchCase,
     target::Target{IsComplex},
@@ -284,12 +288,13 @@ function compile_spec!(
 
     for (ty, case) in x.cases
         true_clause = Expr(:block)
-        compile_spec!(true_clause.args, case, Target{false}(sym, ty))
+        compile_spec!(copy(scope), true_clause.args, case, Target{false}(sym, ty))
         push!(suite, Expr(:if, :($sym isa $ty), true_clause))
     end
 end
 
 function compile_spec!(
+    scope :: Dict{Symbol, Symbol},
     suite::Vector{Any},
     x::EnumCase,
     target::Target{IsComplex},
@@ -301,7 +306,7 @@ function compile_spec!(
 
     end
     for case in x.cases
-        compile_spec!(suite, case, target)
+        compile_spec!(copy(scope), suite, case, target)
     end
 end
 
@@ -312,7 +317,8 @@ function compile_spec(target::Any, case::AbstractCase, ln::Union{LineNumberNode,
 
     ret = Expr(:block)
     suite = ret.args
-    compile_spec!(suite, case, target)
+    scope = Dict{Symbol, Symbol}()
+    compile_spec!(scope, suite, case, target)
     if !isnothing(ln)
         # TODO: better trace
         msg = "no pattern matched, at $ln"
