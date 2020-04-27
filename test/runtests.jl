@@ -11,11 +11,14 @@ code = backend(
             literal("string"),
         ) => :a,
 
-        literal(2) => :b,
+        and(literal(2), capture(:a)) => :b,
 
         guard((_, _, _) -> :some_cond) => :c,
         
-        P_type_of(Symbol) => :d,
+        and(
+            P_type_of(Symbol),
+            P_bind(:c, :((val, val)))
+        ) => :d,
 
         literal(3) => :e
     ]

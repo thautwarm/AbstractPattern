@@ -249,6 +249,10 @@ function compile_spec!(
         target = Target{false}(sym, target.type)
     end
     mkcond = re_tagless(x.pattern)(redy_impl)
+    ln = x.pattern.metatag
+    if !isnothing(ln)
+        push!(suite, ln)
+    end
     scope = Dict{Symbol,Symbol}()
     cond = mkcond(scope, target, TrueCond())
     conditional_expr = to_expression(cond)
@@ -281,7 +285,7 @@ function compile_spec!(
     for (ty, case) in x.cases
         true_clause = Expr(:block)
         compile_spec!(true_clause.args, case, Target{false}(sym, ty))
-        push!(suite, Expr(:if, :($ty isa $sym), true_clause))
+        push!(suite, Expr(:if, :($sym isa $ty), true_clause))
     end
 end
 

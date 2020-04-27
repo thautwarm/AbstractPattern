@@ -61,30 +61,30 @@ println(code)
 
 ```julia
 begin
-    if String isa val
+    if val isa String
         if val == "string"
-            #= line 265 =# @goto a
+            #= line 269 =# @goto a
         end
     end
-    if Int64 isa val
+    if val isa Int64
         if val == 1
-            #= line 265 =# @goto a
+            #= line 269 =# @goto a
         end
         if val == 2
-            #= line 265 =# @goto b
+            #= line 269 =# @goto b
         end
     end
     if some_cond
-        #= line 265 =# @goto c
+        #= line 269 =# @goto c
     end
-    if Int64 isa val
+    if val isa Int64
         if val == 3
-            #= line 265 =# @goto e
+            #= line 269 =# @goto e
         end
     end
-    if Symbol isa val
+    if val isa Symbol
         begin
-            #= line 265 =# @goto d
+            #= line 269 =# @goto d
         end
     end
     error("no pattern matched")
