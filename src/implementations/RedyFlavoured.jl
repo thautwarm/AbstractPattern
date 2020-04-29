@@ -1,8 +1,16 @@
 module RedyFlavoured
-using AbstractPattern
+using  AbstractPattern
 
 Config = NamedTuple{(:type, :ln)}
-Scope = Dict{Symbol,Symbol}
+Scope = ChainDict{Symbol,Symbol}
+ViewCache = ChainDict{Pair{TypeObject, Any}, Tuple{Symbol, Bool}}
+
+struct CompileEnv
+    # Dict(user_defined_name => actual_name). mangling for scope safety
+    scope :: Scope
+    # Dict(view => (viewed_cache_symbol => guarantee_of_defined?))
+    view_cache :: ViewCache
+end
 
 abstract type Cond end
 struct AndCond <: Cond
@@ -103,57 +111,86 @@ end
 
 allsame(xs::Vector) = any(e -> e == xs[1], xs)
 
+
+
 function myimpl()
 
     function cache(f)
-        function apply(env::Scope, target::Target{true})::Cond
+        function apply(env::CompileEnv, target::Target{true})::Cond
             target′ = target.with_repr(gensym(string(target.repr)), Val(false))
             AndCond(TrueCond(:($(target′.repr) = $(target.repr))), f(env, target′))
         end
-        function apply(env::Scope, target::Target{false})::Cond
+        function apply(env::CompileEnv, target::Target{false})::Cond
             f(env, target)
         end
         apply
     end
 
-    wildcard(::Config) = (env::Scope, target::Target) -> TrueCond()
+    wildcard(::Config) = (::CompileEnv, target::Target) -> TrueCond()
 
     literal(v, config::Config) =
-        function ap_literal(env, target::Target)::Cond
+        function ap_literal(::CompileEnv, target::Target)::Cond
         CheckCond(:($(target.repr) == $(QuoteNode(v))))
-    end
-
-    and2(p1::Function, p2::Function) = function ap_and(env::Scope, target::Target{false})::Cond
-        AndCond(p1(env, target), p2(env, target))
     end
 
     function and(ps::Vector{<:Function}, config::Config)
         @assert !isempty(ps)
-        cache(foldl(and2, ps))
+        function ap_and_head(env::CompileEnv, target::Target{false})::Cond
+            hd = ps[1]::Function
+            tl = view(ps, 2:length(ps))
+            init = hd(env, target)
+
+            # the first conjuct must be executed, so the computation can get cached:
+            # e.g.,
+            #   match val with
+            #   | View1 && View2 ->
+            # and we know `View1` must be cached.
+            (computed_guarantee′, env′, ret) = 
+                foldl(tl, init=(true, env, init)) do (computed_guarantee, env, last), p
+                    # `TrueCond` means the return expression must be evaluated to `true`
+                    computed_guarantee′ = computed_guarantee && last isa TrueCond
+                    if computed_guarantee′ === false && computed_guarantee === true
+                        view_cache = env.view_cache
+                        view_cache′ = child(view_cache)
+                        view_cache_change = view_cache′.cur
+                        env = CompileEnv(env.scope, view_cache′)
+                    end
+                    computed_guarantee′, env, AndCond(last, p(env, target))
+                end
+            
+            if computed_guarantee′ === false
+                for (typed_viewer, (sym, _)) in env′.view_cache.cur
+                    env.view_cache.cur[typed_viewer] = (sym, false)
+                end
+            end
+            ret
+
+        end |> cache
     end
 
 
     function or(ps::Vector{<:Function}, config::Config)
         @assert !isempty(ps)
-        function ap_or(env, target::Target{false})::Cond
+        function ap_or(env::CompileEnv, target::Target{false})::Cond
             or_checks = Cond[]
-            envs = Dict{Symbol,Symbol}[]
+            scope = env.scope
+            view_cache = env.view_cache
+            scopes = Dict{Symbol,Symbol}[]
             for p in ps
-                let env′ = copy(env)
-                    push!(or_checks, p(env′, target.clone))
-                    push!(envs, env′)
-                end
+                scope′ = child(scope)
+                env′ = CompileEnv(scope′, view_cache)
+                push!(or_checks, p(env′, target.clone))
+                push!(scopes, scope′.cur)
             end
-
+            
             # check the change of scope discrepancies for all branches
-            all_keys = union!(Set{Symbol}(), map(keys, envs)...)
-            for key in all_keys
-                if !allsame(Symbol[env[key] for env in envs])
+            intersected_new_names = intersect!(Set{Symbol}(),  map(keys, scopes)...)
+            if length(intersected_new_names) !== 1
+                for key in intersected_new_names
                     refresh = gensym(key)
-
                     for i in eachindex(or_checks)
                         check = or_checks[i]
-                        old_name = get(envs[i], key) do
+                        old_name = get(scopes[i], key) do
                             throw(PatternCompilationError(
                                 config.ln,
                                 "Variables such as $key not bound in some branch!",
@@ -162,11 +199,11 @@ function myimpl()
                         or_checks[i] =
                             AndCond(or_checks[i], TrueCond(:($refresh = $old_name)))
                     end
-
-                    env[key] = refresh
-                else
-                    env[key] = envs[end][key]
+                    scope[key] = refresh
                 end
+            else
+                key = intersected_new_names[end]
+                scope[key] = scopes[end][key]
             end
             foldr(OrCond, or_checks)
         end |> cache
@@ -175,16 +212,15 @@ function myimpl()
     # C(p1, p2, .., pn)
     # pattern = (target: code, remainder: code) -> code
     function decons(
-        _,
-        guard1::Function,
-        view,
-        guard2::Function,
-        extract,
+        comp::PComp,
         ps::Vector,
         config::Config,
     )
         ty = config.type
+        ln = config.ln
+
         function ap_decons(env, target::Target{false})::Cond
+            # type check
             chk = if target.type <: ty
                 TrueCond()
             else
@@ -192,28 +228,86 @@ function myimpl()
                 CheckCond(:($(target.repr) isa $ty))
             end
 
-            if guard1 !== AbstractPattern.no_guard
-                chk = AndCond(chk, guard1(env, target))
+            scope = env.scope
+            # compute pattern viewing if no guarantee of being computed
+            view_cache = env.view_cache.cur
+
+            function static_memo(
+                f::Function,
+                op::APP;
+                depend::Union{Nothing, APP}=nothing
+            )
+                if op isa NoPre
+                    nothing
+                elseif op isa NoncachablePre
+                    f(nothing)
+                else
+                    cache_key = depend === nothing ? op : (depend => op)
+                    cache_key = ty => cache_key
+                    cached = get(view_cache, cache_key, nothing)::Union{Tuple{Symbol, Bool}, Nothing}
+                    if cached === nothing
+                        cached_sym = gensym(string(target.repr))
+                        computed_guarantee = false
+                    else
+                        (cached_sym, computed_guarantee) = cached
+                    end
+                    if !computed_guarantee
+                        f(cached_sym)
+                        view_cache[cache_key] = (cached_sym, true)
+                        cached_sym
+                    else
+                        cached_sym
+                    end
+                end
             end
 
-            if view === AbstractPattern.identity_view
-                sym = target.repr
-            else
-                sym = gensym(string(target.repr))
-                chk = AndCond(
-                    chk,
-                    TrueCond(:($sym = $(view(target.repr, env, config.ln)))),
-                )
+            static_memo(comp.guard1) do cached_sym
+                guard_expr = comp.guard1(target.repr)
+                if cached_sym !== nothing
+                    guard_cond = AndCond(
+                        TrueCond(:($cached_sym = $guard_expr)),
+                        CheckCond(cached_sym)
+                    )
+                else
+                    guard_cond = CheckCond(guard_expr)
+                end
+                chk = AndCond(chk, guard_cond)
             end
 
-            if guard2 !== AbstractPattern.identity_view
-                chk = AndCond(chk, guard2(env, target))
+            viewed_sym = target.repr
+            viewed_sym′ = static_memo(comp.view) do cached_sym
+                viewed_expr = comp.view(target.repr)
+                if cached_sym === nothing
+                    viewed_sym′ = gensym(string(viewed_sym))
+                else
+                    viewed_sym′ = cached_sym
+                end
+                chk = AndCond(chk, TrueCond(:($viewed_sym′ = $viewed_expr)))
+                viewed_sym′
+            end
+            if viewed_sym′ !== nothing
+                viewed_sym = viewed_sym′
+            end
+            
+            static_memo(comp.guard2; depend=comp.view) do cached_sym
+                guard_expr = comp.guard2(viewed_sym)
+                if cached_sym !== nothing
+                    guard_cond = AndCond(
+                        TrueCond(:($cached_sym = $guard_expr)),
+                        CheckCond(cached_sym)
+                    )
+                else
+                    guard_cond = CheckCond(guard_expr)
+                end
+                chk = AndCond(chk, guard_cond)
             end
 
+            extract = comp.extract
             for i in eachindex(ps)
                 p = ps[i] :: Function
-                field_target = Target{true}(extract(sym, i), Ref{TypeObject}(Any))
-                chk = AndCond(chk, p(env, field_target))
+                field_target = Target{true}(extract(viewed_sym, i), Ref{TypeObject}(Any))
+                env′ = CompileEnv(scope, ViewCache())
+                chk = AndCond(chk, p(env′, field_target))
             end
             chk
         end |> cache
@@ -221,14 +315,14 @@ function myimpl()
 
     function guard(pred::Function, config::Config)
         function ap_guard(env, target::Target{false})::Cond
-            expr = pred(target.repr, env, config.ln)
+            expr = pred(target.repr, env.scope, config.ln)
             expr === true ? TrueCond() : CheckCond(expr)
         end |> cache
     end
 
     function effect(perf::Function, config::Config)
         function ap_effect(env, target::Target{false})::Cond
-            TrueCond(perf(target.repr, env, config.ln))
+            TrueCond(perf(target.repr, env.scope, config.ln))
         end |> cache
     end
 
@@ -246,7 +340,7 @@ end
 const redy_impl = myimpl()
 
 function compile_spec!(
-    scope::Dict{Symbol,Symbol},
+    env::CompileEnv,
     suite::Vector{Any},
     x::Shaped,
     target::Target{IsComplex},
@@ -261,10 +355,10 @@ function compile_spec!(
     if !isnothing(ln)
         push!(suite, ln)
     end
-    cond = mkcond(scope, target)
+    cond = mkcond(env, target)
     conditional_expr = to_expression(cond)
     true_clause = Expr(:block)
-    compile_spec!(scope, true_clause.args, x.case, target)
+    compile_spec!(env, true_clause.args, x.case, target)
     push!(
         suite,
         conditional_expr === true ? true_clause : Expr(:if, conditional_expr, true_clause),
@@ -272,19 +366,19 @@ function compile_spec!(
 end
 
 function compile_spec!(
-    scope::Dict{Symbol,Symbol},
+    env::CompileEnv,
     suite::Vector{Any},
     x::Leaf,
     target::Target,
 )
-    for (k, v) in scope
+    for_chaindict(env.scope) do k, v
         push!(suite, :($k = $v))  # hope this gets optimized to move semantics...
     end
     push!(suite, Expr(:macrocall, Symbol("@goto"), LineNumberNode(@__LINE__), x.cont))
 end
 
 function compile_spec!(
-    scope::Dict{Symbol,Symbol},
+    env::CompileEnv,
     suite::Vector{Any},
     x::SwitchCase,
     target::Target{IsComplex},
@@ -299,13 +393,15 @@ function compile_spec!(
 
     for (ty, case) in x.cases
         true_clause = Expr(:block)
-        compile_spec!(copy(scope), true_clause.args, case, target.with_type(ty))
+        # create new `view_cache` as only one case will be executed
+        env′ = CompileEnv(child(env.scope), child(env.view_cache))
+        compile_spec!(env′, true_clause.args, case, target.with_type(ty))
         push!(suite, Expr(:if, :($sym isa $ty), true_clause))
     end
 end
 
 function compile_spec!(
-    scope::Dict{Symbol,Symbol},
+    env::CompileEnv,
     suite::Vector{Any},
     x::EnumCase,
     target::Target{IsComplex},
@@ -316,7 +412,11 @@ function compile_spec!(
         target = target.with_repr(sym, Val(false))
     end
     for case in x.cases
-        compile_spec!(copy(scope), suite, case, target.clone)
+        # use old view_cache:
+        # cases are tried in order,
+        # hence `view_cache` can inherit from the previous case
+        env′ = CompileEnv(child(env.scope), env.view_cache)
+        compile_spec!(env, suite, case, target.clone)
     end
 end
 
@@ -327,8 +427,11 @@ function compile_spec(target::Any, case::AbstractCase, ln::Union{LineNumberNode,
 
     ret = Expr(:block)
     suite = ret.args
-    scope = Dict{Symbol,Symbol}()
-    compile_spec!(scope, suite, case, target)
+    scope = Scope()
+    view_cache = ViewCache()
+    env = CompileEnv(scope, view_cache)
+    
+    compile_spec!(env, suite, case, target)
     if !isnothing(ln)
         # TODO: better trace
         msg = "no pattern matched, at $ln"

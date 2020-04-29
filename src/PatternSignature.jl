@@ -54,28 +54,53 @@ guard(pred) = function apply(impls::PatternImpls)
     me
 end
 
+"""
+abstract pure process
+"""
+abstract type APP end
+
+struct NoncachablePre <: APP
+    callable :: Any
+end
+(f::NoncachablePre)(target::Any) = f.callable(target)
+struct NoPre <: APP end
+
+"""composite pattern
+"""
+struct PComp
+    repr :: AbstractString
+    tcons :: Function
+    guard1 :: APP
+    view :: APP
+    guard2 :: APP
+    extract :: Function
+end
+
 @specialize
-identity_view(target, scope, ln) = target
-const no_guard = guard((target, scope, ln) -> true)
+
 invalid_extract(_, _) = error("impossible")
 
-function decons(tcons; guard1=no_guard, view=identity_view, guard2=no_guard, extract=invalid_extract, ps=[])
-    decons(tcons, guard1, view, guard2, extract, ps)
+function PComp(
+    repr :: AbstractString,
+    tcons::Function;
+    guard1::APP=NoPre(),
+    view::APP=NoPre(),
+    guard2::APP=NoPre(),
+    extract::Function=invalid_extract,
+)
+    PComp(repr, tcons, guard1, view, guard2, extract)
 end
+
 @nospecialize
-decons(tcons, guard1, view, guard2, extract, ps) = function apply(impls::PatternImpls)
+
+decons(comp::PComp, ps) = function apply(impls::PatternImpls)
     xs = [p(impls) for p in ps]
     me = Vector{Any}(undef, length(impls))
-    guard1′ = guard1(impls)
-    guard2′ = guard2(impls)
-
     for i in eachindex(me)
-        me[i] = impls[i].decons(me, tcons, guard1′, view, guard2′, extract, xs)
+        me[i] = impls[i].decons(me, comp, xs)
     end
     me
 end
-
-
 
 effect(ctx_perf) = function apply(impls::PatternImpls)
     me = Vector{Any}(undef, length(impls))

@@ -1,5 +1,5 @@
 module UserSitgnature
-
+import AbstractPattern: PComp
 export and, or, literal, and, wildcard, decons,
        guard, effect, self
 
@@ -33,11 +33,9 @@ wildcard(config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
     impl.wildcard(config)
 end
 
-decons(tcons, guard1, view, guard2, extract, ps, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
+decons(comp::PComp, ps, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
     xs = [p(impl) for p in ps]
-    guard1′ = guard1(impl)
-    guard2′ = guard2(impl)
-    impl.decons(tcons, guard1′, view, guard2′, extract, xs, config)
+    impl.decons(comp, xs, config)
 end
 
 guard(pred, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)

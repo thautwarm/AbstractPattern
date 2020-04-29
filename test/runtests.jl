@@ -6,6 +6,8 @@ function test()
 
 backend = MK(RedyFlavoured)
 
+doubled(x) = :(complex_func1($x), complex_func2($x))
+
 code = backend(
     :val,
     [
@@ -40,11 +42,16 @@ code = backend(
             ])
         ]) =>  :g,
 
-        P_slow_view(x -> :($x, $x),
-            P_tuple([P_type_of(Int), P_type_of(Int)])
-        ) => :h
+        # doubled(x) = :(complex_func1($x), complex_func2($x))
+        P_slow_view(doubled,
+            [P_type_of(Int), P_type_of(Int)],
+        ) => :h,
+        P_slow_view(doubled,
+            [P_type_of(String), P_type_of(Int)],
+        ) => :i
     ]
 )
+
 
 end
 
