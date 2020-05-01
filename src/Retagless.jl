@@ -25,7 +25,7 @@ function re_tagless(config :: NamedTuple, p :: Wildcard)
 end
 
 function re_tagless(config :: NamedTuple, p :: Deconstrucution)
-    UserSitgnature.decons(p.comp::PComp, [re_tagless(p) for p in p.params], config)
+    UserSitgnature.decons(p.comp::PComp, p.extract, [re_tagless(p) for p in p.params], config)
 end
 
 function re_tagless(config :: NamedTuple, p :: Guard)

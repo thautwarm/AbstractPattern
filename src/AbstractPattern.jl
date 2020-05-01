@@ -4,8 +4,9 @@ export spec_gen, runterm, MK, RedyFlavoured, TypeObject
 export and, or, literal, and, wildcard, decons,
        guard, effect, metadata, self
 export PatternCompilationError, Target, PatternImpl, PComp
-export APP, CachablePre, NoncachablePre, NoPre
+export APP, NoncachablePre, NoPre
 export ChainDict, for_chaindict, child, for_chaindict_dup
+export BasicPatterns
 include("DataStructure.jl")
 include("Target.jl")
 include("PatternSignature.jl")

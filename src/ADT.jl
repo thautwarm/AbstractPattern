@@ -31,6 +31,7 @@ end
 
 struct Deconstrucution <: TagfulPattern
     comp :: PComp
+    extract :: Function
     params :: Vector{PatternInfo}
 end
 
@@ -58,9 +59,9 @@ function untagless(points_of_view::Dict{Function, Int})
         all_info[[myviewpoint, metaviewpoint, typetag_viewpoint]]...
     )
     ! = mk_info
-    function decons(_::Vector{Any}, comp::PComp, ps)
+    function decons(_::Vector{Any}, comp::PComp, extract::Function, ps)
         ! = mk_info
-        Deconstrucution(comp, PatternInfo[!p for p in ps])
+        Deconstrucution(comp, extract, PatternInfo[!p for p in ps])
     end
     (
         and = (_, ps) -> And(PatternInfo[!e for e in ps]),

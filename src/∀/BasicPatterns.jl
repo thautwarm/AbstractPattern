@@ -1,11 +1,15 @@
+module BasicPatterns
+using AbstractPattern
+
 export P_bind, P_tuple, P_type_of, P_vector, P_capture, P_vector3, P_slow_view
+export SimpleCachablePre
 @nospecialize
 OptionalLn = Union{LineNumberNode,Nothing}
 
-struct CachablePre <: APP
+struct SimpleCachablePre <: APP
     f :: Function
 end
-(f::CachablePre)(target) = f.f(target)
+(f::SimpleCachablePre)(target) = f.f(target)
 
 function sequence_index(viewed, i::Integer)
     :($viewed[$i])
@@ -22,7 +26,7 @@ end
 
 function mk_type_object(i::Int, ::Type{T}) where {T}
     if isabstracttype(T)
-        TypeVar(gensym(string(i)), T)
+        TypeVar(Symbol(:var, i), T)
     else
         T
     end
@@ -64,10 +68,18 @@ end
 """deconstruct a tuple
 """
 function P_tuple(fields::AbstractArray, prepr::AbstractString="Tuple")
-    type_of_tuple(xs...) = Tuple{(mk_type_object(i, xs[i]) for i in eachindex(xs))...}
-    comp = PComp(prepr, type_of_tuple; extract=sequence_index)
+    function type_of_tuple(xs...)
+        
+        ts = [mk_type_object(i, xs[i]) for i in eachindex(xs)]
+        foldl(ts, init=Tuple{ts...}) do last, t
+            t isa TypeVar ?
+                UnionAll(t, last) :
+                last
+        end
+    end
+    comp = PComp(prepr, type_of_tuple)
     
-    decons(comp, fields)
+    decons(comp, sequence_index, fields)
 end
 
 """deconstruct a vector
@@ -77,15 +89,16 @@ function P_vector(fields::AbstractArray, prepr::AbstractString="1DVector")
         if length(types) == 0
             AbstractArray{Any,1}
         else
-            AbstractArray{T,1} where {T<:reduce(typejoin, types)}
+            Eltype = foldl(typejoin, types)
+            AbstractArray{T,1} where {T<:Eltype}
         end
     end
     n_fields = length(fields)
     function pred(target)
         length_eq_check(target, n_fields)
     end
-    comp = PComp(prepr, type_of_vector; guard1=NoncachablePre(pred), extract=sequence_index)
-    decons(comp, fields)
+    comp = PComp(prepr, type_of_vector; guard1=NoncachablePre(pred))
+    decons(comp, sequence_index, fields)
 end
 
 """deconstruct a vector in this way: [a, b, c, pack..., d, e]
@@ -95,27 +108,33 @@ function P_vector3(init::AbstractArray, pack, tail::AbstractArray, prepr::Abstra
     n2 = length(tail)
     min_len = length(init) + length(tail)
     function type_of_vector(types...)
-        if length(types) == 0
-            AbstractArray{Any,1}
-        else
-            AbstractArray{T,1} where {T<:reduce(typejoin, types)}
-        end
+        Eltype = foldl(
+                typejoin,
+                [
+                    types[1:n1]...,
+                    eltype(types[n1+1]),
+                    types[end-n2:end]...
+                ]
+            )
+        AbstractArray{T,1} where {
+            T<:Eltype
+        }
     end
     function extract(arr, i::Int)
         if i <= n1
             :($arr[$i])
         elseif i === n1 + 1
-            :(view($arr, n1:length($arr)-n2))
+            :(view($arr, $n1+1:length($arr)-$n2))
         else
             incr = i - n1 - 1
-            :(arr[end-n2+incr])
+            :($arr[end-$(n2-incr)])
         end
     end
-    function pred(target, scope, ln)
+    function pred(target)
         :(length($target) >= $min_len)
     end
-    comp = PComp(prepr, type_of_vector; guard1=NoncachablePre(pred), extract=extract)
-    decons(comp, [init; pack; tail])
+    comp = PComp(prepr, type_of_vector; guard1=NoncachablePre(pred))
+    decons(comp, extract, [init; pack; tail])
 end
 
 
@@ -133,19 +152,15 @@ function P_slow_view(trans, ps, prepr::AbstractString="ViewBy($trans)")
 
     comp = PComp(
         prepr, type_of_slow_view;
-        view=CachablePre(trans),
-        guard2=CachablePre(post_guard),
-        extract=sequence_index
+        view=SimpleCachablePre(trans),
+        guard2=SimpleCachablePre(post_guard)
     )
-    decons(comp, ps)
+    decons(comp, extract, ps)
 end
 
 """typed view pattern
 """
-function P_fast_view(tcons, trans, ps, prepr="ViewBy($trans, typecons=$tcons)")
-    function type_of_fast_view(args...)
-        tcons(args...)
-    end
+function P_fast_view(tcons, trans, ps, prepr::AbstractUnitRange="ViewBy($trans, typecons=$tcons)")
 
     n_fields = length(ps)
     function post_guard(viewed_tuple)
@@ -153,12 +168,12 @@ function P_fast_view(tcons, trans, ps, prepr="ViewBy($trans, typecons=$tcons)")
     end
 
     comp = PComp(
-        prepr, type_of_fast_view;
-        view=CachablePre(trans),
-        guard2=NoncachablePre(post_guard),
-        extract = sequence_index
+        prepr, tcons;
+        view=SimpleCachablePre(trans),
+        guard2=NoncachablePre(post_guard)
     )
-    decons(comp, ps)
+    decons(comp, sequence_index, ps)
 end
 
 @specialize
+end

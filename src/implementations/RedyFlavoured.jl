@@ -183,7 +183,10 @@ function myimpl()
 
     literal(v, config::Config) =
         function ap_literal(::CompileEnv, target::Target)::Cond
-        CheckCond(:($(target.repr) == $(QuoteNode(v))))
+            if v isa Symbol
+                v = QuoteNode(v)
+            end
+        CheckCond(:($(target.repr) == $v))
     end
 
     function and(ps::Vector{<:Function}, config::Config)
@@ -266,6 +269,7 @@ function myimpl()
     # pattern = (target: code, remainder: code) -> code
     function decons(
         comp::PComp,
+        extract::Function,
         ps::Vector,
         config::Config,
     )
@@ -369,7 +373,6 @@ function myimpl()
                 nothing
             end
 
-            extract = comp.extract
             for i in eachindex(ps)
                 p = ps[i] :: Function
                 field_target = Target{true}(extract(viewed_sym, i), Ref{TypeObject}(Any))
@@ -496,8 +499,7 @@ function compile_spec!(
 end
 
 function compile_spec(target::Any, case::AbstractCase, ln::Union{LineNumberNode,Nothing})
-    target = target isa Symbol ? Target{false}(target, Ref{TypeObject}(Any)) :
-        Target{true}(target, Ref{TypeObject}(Any))
+    target = Target{true}(target, Ref{TypeObject}(Any))
 
 
     ret = Expr(:block)

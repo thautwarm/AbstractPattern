@@ -33,9 +33,9 @@ wildcard(config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
     impl.wildcard(config)
 end
 
-decons(comp::PComp, ps, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
+decons(comp::PComp, extract::Function, ps, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)
     xs = [p(impl) for p in ps]
-    impl.decons(comp, xs, config)
+    impl.decons(comp, extract, xs, config)
 end
 
 guard(pred, config::NamedTuple=_empty_ntuple) = function apply(impl::PatternUse)

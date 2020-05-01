@@ -32,7 +32,7 @@ function pretty(points_of_view::Dict{Function, Int})
     literal(_, val) = Print.w(string(val))
     wildcard(_) = Print.w("_")
 
-    function decons(_, comp::PComp, ps)
+    function decons(_, comp::PComp, _, ps)
         Print.seq(Print.w(comp.repr), Print.w("("), getindex.(ps, viewpoint)..., Print.w(")"))
     end
 

@@ -30,7 +30,7 @@ function tag_extract(points_of_view::Dict{Function,Int})
 
     wildcard(_) = Any
 
-    function decons(me, comp::PComp, ns)
+    function decons(me, comp::PComp, _, ns)
         targs = getindex.(ns, viewpoint)
         try
             comp.tcons(targs...)

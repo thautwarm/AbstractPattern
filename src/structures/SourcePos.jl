@@ -28,7 +28,7 @@ function term_position(points_of_view::Dict{Function, Int})
     literal(_, _) = nothing
     wildcard(_) = nothing
 
-    function decons(_, comp::PComp, ps)
+    function decons(_, comp::PComp, _, ps)
         res = getindex.(ps, viewpoint)
         i = findfirst(!isnothing, res)
         if i === nothing

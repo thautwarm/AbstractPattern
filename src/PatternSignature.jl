@@ -73,7 +73,6 @@ struct PComp
     guard1 :: APP
     view :: APP
     guard2 :: APP
-    extract :: Function
 end
 
 @specialize
@@ -85,19 +84,19 @@ function PComp(
     tcons::Function;
     guard1::APP=NoPre(),
     view::APP=NoPre(),
-    guard2::APP=NoPre(),
-    extract::Function=invalid_extract,
+    guard2::APP=NoPre()
 )
-    PComp(repr, tcons, guard1, view, guard2, extract)
+    PComp(repr, tcons, guard1, view, guard2)
 end
 
+decons(comp::PComp, ps; extract=invalid_extract) = decons(comp, extract, ps)
 @nospecialize
 
-decons(comp::PComp, ps) = function apply(impls::PatternImpls)
+decons(comp::PComp, extract::Function, ps) = function apply(impls::PatternImpls)
     xs = [p(impls) for p in ps]
     me = Vector{Any}(undef, length(impls))
     for i in eachindex(me)
-        me[i] = impls[i].decons(me, comp, xs)
+        me[i] = impls[i].decons(me, comp, extract, xs)
     end
     me
 end

@@ -1,4 +1,5 @@
 using AbstractPattern
+using AbstractPattern.BasicPatterns
 using Test
 
 const backend = MK(RedyFlavoured)
