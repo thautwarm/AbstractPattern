@@ -1,7 +1,9 @@
-
 using AbstractPattern
 using AbstractPattern.BasicPatterns
 
+
+using AbstractPattern
+using AbstractPattern.BasicPatterns
 
 const backend = MK(RedyFlavoured)
 
@@ -48,10 +50,17 @@ function basic_ex2tf(eval::Function, ex::Expr)
         @assert n_args === 2
         l, r = args
         and(!l, !r)
+
     elseif hd === :if
         @assert n_args === 2
         cond = args[1]
-        !cond
+        guard() do target, env, _
+            bind = Expr(:block)
+            for_chaindict(env) do k, v
+                push!(bind.args, :($k = $v))
+            end
+            Expr(:let, bind, cond)
+        end
     elseif hd === :&
         @assert n_args === 1
         val = args[1]
@@ -128,9 +137,9 @@ function basic_ex2tf(eval::Function, ex::Expr)
     end
 end
 
-
-
 const case_sym = Symbol("@case")
+"""a minimal implementation of switch
+"""
 macro switch(val, ex)
     @assert Meta.isexpr(ex, :block)
     clauses = Pair{Function, Symbol}[]
@@ -160,7 +169,6 @@ macro switch(val, ex)
         body
     ))
 end
-
 
 
 val = 1
@@ -194,62 +202,63 @@ end
     @case (1, 2)
         println(b)
         return
-    @case (a, &(a + 3))
+    @case (a, &(a + 4))
         println("this run")
         return
 end
-# import MLStyle
-# import Match
-# import Rematch
 
-# function f_rematch(value)
-#     Rematch.@match value begin    
-#         _::String => :string
-#         (2, a, 3) => (:some_tuple, a)
-#         [1, a..., 3, 4] => (:some_vector, a)
-#     end
-# end
+import MLStyle
+import Match
+import Rematch
 
-# function f_match(value)
-#     Match.@match value begin    
-#         _::String => :string
-#         (2, a, 3) => (:some_tuple, a)
-#         [1, a..., 3, 4] => (:some_vector, a)
-#     end
-# end
+function f_rematch(value)
+    Rematch.@match value begin    
+        _::String => :string
+        (2, a, 3) => (:some_tuple, a)
+        [1, a..., 3, 4] => (:some_vector, a)
+    end
+end
 
-# function f_mlstyle(value)
-#     Rematch.@match value begin    
-#         _::String => :string
-#         (2, a, 3) => (:some_tuple, a)
-#         [1, a..., 3, 4] => (:some_vector, a)
-#     end
-# end
+function f_match(value)
+    Match.@match value begin    
+        _::String => :string
+        (2, a, 3) => (:some_tuple, a)
+        [1, a..., 3, 4] => (:some_vector, a)
+    end
+end
 
-# function f_this(value)
-#     @switch value begin
-#     @case _::String
-#         return :string
-#     @case (2, a, 3) 
-#         return (:some_tuple, a)
-#     @case [1, a..., 3, 4]
-#         return (:some_vector, a)
-#     end
-# end
+function f_mlstyle(value)
+    Rematch.@match value begin    
+        _::String => :string
+        (2, a, 3) => (:some_tuple, a)
+        [1, a..., 3, 4] => (:some_vector, a)
+    end
+end
 
-# using BenchmarkTools
-# data = [
-#     "asda",
-#     (2, 1 ,3),
-#     [1, 2, 2, 3, 4]
-# ]
+function f_this(value)
+    @switch value begin
+    @case _::String
+        return :string
+    @case (2, a, 3) 
+        return (:some_tuple, a)
+    @case [1, a..., 3, 4]
+        return (:some_vector, a)
+    end
+end
 
-# fs = [f_rematch, f_match, f_mlstyle, f_this]
+using BenchmarkTools
+data = [
+    "asda",
+    (2, 1 ,3),
+    [1, 2, 2, 3, 4]
+]
 
-# for datum in data
-#     for f in fs
-#         @info :testing f datum
-#         println(@btime $f($datum))
-#     end
-#     println("===================")
-# end
+fs = [f_rematch, f_match, f_mlstyle, f_this]
+
+for datum in data
+    for f in fs
+        @info :testing f datum
+        println(@btime $f($datum))
+    end
+    println("===================")
+end
