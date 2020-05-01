@@ -112,12 +112,65 @@ end
 allsame(xs::Vector) = any(e -> e == xs[1], xs)
 
 
+const CACHE_NO_CACHE = 0
+const CACHE_MAY_CACHE = 1
+const CACHE_CACHED = 2
+
+
+function static_memo(
+    f::Function,
+    view_cache::ViewCache,
+    op::APP;
+    ty::TypeObject,
+    depend::Union{Nothing, APP}=nothing
+)
+    if op isa NoPre
+        nothing
+    elseif op isa NoncachablePre
+        cached_sym = nothing
+        f(cached_sym, CACHE_NO_CACHE)
+    else
+        cache_key = depend === nothing ? op : (depend => op)
+        cache_key = Pair{TypeObject, Any}(ty, cache_key)
+        cached = get(view_cache, cache_key) do
+           nothing 
+        end::Union{Tuple{Symbol, Bool}, Nothing}
+        if cached === nothing
+
+            cached_sym = gensym("cache")
+            computed_guarantee = false
+        else
+            (cached_sym, computed_guarantee) = cached
+        end
+        if !computed_guarantee
+            f(cached_sym, CACHE_MAY_CACHE)
+            view_cache[cache_key] = (cached_sym, true)
+            cached_sym
+        else
+            f(cached_sym, CACHE_CACHED)
+        end
+    end
+end
+
+function init_cache(view_cache::ViewCache)
+    block = Expr(:block)
+    cache_syms = block.args
+    # TODO: OPT
+    for_chaindict_dup(view_cache) do _, (view_cache_sym, _)
+        push!(cache_syms, :($view_cache_sym = nothing))
+    end
+    if isempty(cache_syms)
+        true
+    else
+        block
+    end
+end
 
 function myimpl()
 
     function cache(f)
         function apply(env::CompileEnv, target::Target{true})::Cond
-            target′ = target.with_repr(gensym(string(target.repr)), Val(false))
+            target′ = target.with_repr(gensym(), Val(false))
             AndCond(TrueCond(:($(target′.repr) = $(target.repr))), f(env, target′))
         end
         function apply(env::CompileEnv, target::Target{false})::Cond
@@ -230,84 +283,106 @@ function myimpl()
 
             scope = env.scope
             # compute pattern viewing if no guarantee of being computed
-            view_cache = env.view_cache.cur
-
-            function static_memo(
-                f::Function,
-                op::APP;
-                depend::Union{Nothing, APP}=nothing
-            )
-                if op isa NoPre
-                    nothing
-                elseif op isa NoncachablePre
-                    f(nothing)
-                else
-                    cache_key = depend === nothing ? op : (depend => op)
-                    cache_key = ty => cache_key
-                    cached = get(view_cache, cache_key, nothing)::Union{Tuple{Symbol, Bool}, Nothing}
-                    if cached === nothing
-                        cached_sym = gensym(string(target.repr))
-                        computed_guarantee = false
-                    else
-                        (cached_sym, computed_guarantee) = cached
-                    end
-                    if !computed_guarantee
-                        f(cached_sym)
-                        view_cache[cache_key] = (cached_sym, true)
-                        cached_sym
-                    else
-                        cached_sym
-                    end
+            view_cache = env.view_cache
+            
+            target_sym::Symbol = target.repr
+            viewed_sym::Any = target_sym
+            static_memo(view_cache, comp.guard1; ty=ty) do cached_sym, cache_flag
+                if cache_flag === CACHE_CACHED
+                    chk = AndCond(chk, CheckCond(:($cached_sym.value)))
+                    return
                 end
-            end
-
-            static_memo(comp.guard1) do cached_sym
-                guard_expr = comp.guard1(target.repr)
-                if cached_sym !== nothing
-                    guard_cond = AndCond(
-                        TrueCond(:($cached_sym = $guard_expr)),
-                        CheckCond(cached_sym)
+                
+                if cache_flag === CACHE_NO_CACHE
+                    guard_expr = comp.guard1(target_sym)
+                    chk = AndCond(chk, CheckCond(guard_expr))
+                elseif cache_flag === CACHE_MAY_CACHE
+                    guard_expr = comp.guard1(target_sym)
+                    do_cache = Expr(:if,
+                        :($cached_sym === nothing),
+                        :($cached_sym = Some($guard_expr))
+                    )
+                    chk = AndCond(
+                        chk,
+                        AndCond(
+                            TrueCond(do_cache),
+                            CheckCond(:($cached_sym.value))
+                        )
                     )
                 else
-                    guard_cond = CheckCond(guard_expr)
+                    error("impossible: invalid flag")
                 end
-                chk = AndCond(chk, guard_cond)
+                nothing
             end
 
-            viewed_sym = target.repr
-            viewed_sym′ = static_memo(comp.view) do cached_sym
-                viewed_expr = comp.view(target.repr)
-                if cached_sym === nothing
-                    viewed_sym′ = gensym(string(viewed_sym))
+            static_memo(view_cache, comp.view; ty=ty) do cached_sym, cache_flag
+                if cache_flag === CACHE_NO_CACHE
+                    viewed_sym = gensym()
+                    viewed_expr = comp.view(target_sym)
+                    chk = AndCond(
+                        TrueCond(:($viewed_sym = $viewed_expr))
+                    )
+                elseif cache_flag === CACHE_CACHED
+                    viewed_sym = :($cached_sym.value)
+                elseif cache_flag === CACHE_MAY_CACHE
+                    viewed_expr = comp.view(target_sym)
+                    do_cache = Expr(:if,
+                        :($cached_sym === nothing),
+                        :($cached_sym = Some($viewed_expr))
+                    )
+                    chk = AndCond(
+                        chk,
+                        TrueCond(do_cache)
+                    )
+                    viewed_sym = :($cached_sym.value)
                 else
-                    viewed_sym′ = cached_sym
+                    error("impossible: invalid flag")
                 end
-                chk = AndCond(chk, TrueCond(:($viewed_sym′ = $viewed_expr)))
-                viewed_sym′
-            end
-            if viewed_sym′ !== nothing
-                viewed_sym = viewed_sym′
+                nothing
             end
             
-            static_memo(comp.guard2; depend=comp.view) do cached_sym
-                guard_expr = comp.guard2(viewed_sym)
-                if cached_sym !== nothing
-                    guard_cond = AndCond(
-                        TrueCond(:($cached_sym = $guard_expr)),
-                        CheckCond(cached_sym)
+            static_memo(view_cache, comp.guard2; ty=ty, depend=comp.view) do cached_sym, cache_flag
+                if cache_flag === CACHE_CACHED
+                    chk = AndCond(chk, CheckCond(:($cached_sym.value)))
+                    return
+                end
+
+                if cache_flag === CACHE_NO_CACHE
+                    guard_expr = comp.guard2(viewed_sym)
+                    chk = AndCond(chk, CheckCond(guard_expr))
+                elseif cache_flag === CACHE_MAY_CACHE
+                    guard_expr = comp.guard2(viewed_sym)
+                    do_cache = Expr(:if,
+                        :($cached_sym === nothing),
+                        :($cached_sym = Some($guard_expr))
+                    )
+                    chk = AndCond(
+                        chk,
+                        AndCond(
+                            TrueCond(do_cache),
+                            CheckCond(:($cached_sym.value))
+                        )
                     )
                 else
-                    guard_cond = CheckCond(guard_expr)
+                    error("impossible: invalid flag")
                 end
-                chk = AndCond(chk, guard_cond)
+                nothing
             end
 
             extract = comp.extract
             for i in eachindex(ps)
                 p = ps[i] :: Function
                 field_target = Target{true}(extract(viewed_sym, i), Ref{TypeObject}(Any))
-                env′ = CompileEnv(scope, ViewCache())
-                chk = AndCond(chk, p(env′, field_target))
+                view_cache′ = ViewCache()
+                env′ = CompileEnv(scope, view_cache′)
+                elt_chk = p(env′, field_target)
+                chk = AndCond(
+                    chk,
+                    AndCond(
+                        TrueCond(init_cache(view_cache′)),
+                        elt_chk
+                    )
+                )
             end
             chk
         end |> cache
@@ -346,7 +421,7 @@ function compile_spec!(
     target::Target{IsComplex},
 ) where {IsComplex}
     if IsComplex && !(x.case isa Leaf)
-        sym = gensym(string(target.repr))
+        sym = gensym()
         push!(suite, :($sym = $(target.repr)))
         target = target.with_repr(sym, Val(false))
     end
@@ -384,7 +459,7 @@ function compile_spec!(
     target::Target{IsComplex},
 ) where {IsComplex}
     if IsComplex
-        sym = gensym(string(target.repr))
+        sym = gensym()
         push!(suite, :($sym = $(target.repr)))
         target = target.with_repr(sym, Val(false))
     else
@@ -407,7 +482,7 @@ function compile_spec!(
     target::Target{IsComplex},
 ) where {IsComplex}
     if IsComplex
-        sym = gensym(string(target.repr))
+        sym = gensym()
         push!(suite, :($sym = $(target.repr)))
         target = target.with_repr(sym, Val(false))
     end
@@ -432,6 +507,7 @@ function compile_spec(target::Any, case::AbstractCase, ln::Union{LineNumberNode,
     env = CompileEnv(scope, view_cache)
     
     compile_spec!(env, suite, case, target)
+    pushfirst!(suite, init_cache(view_cache))
     if !isnothing(ln)
         # TODO: better trace
         msg = "no pattern matched, at $ln"

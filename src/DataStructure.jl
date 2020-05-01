@@ -21,6 +21,14 @@ function Base.get(c::ChainDict{K, V}, k::K)::V where {K, V}
          end
 end
 
+function Base.get(f::Function, c::ChainDict{K, V}, k::K) where {K, V}
+    get(c.cur, k) do
+         isassigned(c.init) ?
+            get(f, c.init[], k) :
+            f()
+         end
+end
+
 function for_chaindict(f::Function, d::ChainDict{K, V}) where {K, V}
     keys = Set{K}()
     while true
@@ -40,9 +48,22 @@ function for_chaindict(f::Function, d::ChainDict{K, V}) where {K, V}
     end
 end
 
+function for_chaindict_dup(f::Function, d::ChainDict{K, V}) where {K, V}
+    while true
+        for (k, v) in d.cur
+            f(k, v)
+        end
+        if isassigned(d.init)
+            d = d.init[]
+        else
+            return
+        end
+    end
+end
+
 Base.getindex(c::ChainDict, k) = Base.get(c, k)
 
-function Base.setindex!(c::ChainDict{K, V}, k::K, value::V) where {K, V}
+function Base.setindex!(c::ChainDict{K, V}, value::V, k::K) where {K, V}
     c.cur[k] = value
 end
         

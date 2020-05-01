@@ -1,12 +1,11 @@
 using AbstractPattern
 using Test
 
+const backend = MK(RedyFlavoured)
 
 function test()
 
-backend = MK(RedyFlavoured)
-
-doubled(x) = :(complex_func1($x), complex_func2($x))
+pairit(x) = :(complex_func1($x), complex_func2($x))
 
 code = backend(
     :val,
@@ -42,18 +41,41 @@ code = backend(
             ])
         ]) =>  :g,
 
-        # doubled(x) = :(complex_func1($x), complex_func2($x))
-        P_slow_view(doubled,
+        # pairit(x) = :(complex_func1($x), complex_func2($x))
+        P_slow_view(pairit,
             [P_type_of(Int), P_type_of(Int)],
         ) => :h,
-        P_slow_view(doubled,
+        P_slow_view(pairit,
             [P_type_of(String), P_type_of(Int)],
         ) => :i
     ]
 )
 
-
 end
 
 
-println(test())
+# println(test())   
+
+
+untyped_view1(x) = :(f1($x))
+untyped_view2(x) = :(f2($x))
+
+code = backend(
+    :val,
+    [
+        and(
+            P_slow_view(untyped_view1, []),
+            P_slow_view(untyped_view2,
+                [P_type_of(Int), P_type_of(Int)],
+            )
+        ) => :h,
+        P_slow_view(untyped_view2,
+            [
+                P_type_of(String),
+                P_slow_view(untyped_view1, [])
+            
+            ],
+        ) => :i
+    ]
+)
+println(code)

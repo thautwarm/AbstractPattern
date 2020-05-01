@@ -11,6 +11,14 @@ function sequence_index(viewed, i::Integer)
     :($viewed[$i])
 end
 
+function length_eq_check(seq, n::Int)
+    if n === 0
+        :(isempty($seq))
+    else
+        :(length($seq) === $n)
+    end
+end
+
 
 function mk_type_object(i::Int, ::Type{T}) where {T}
     if isabstracttype(T)
@@ -74,7 +82,7 @@ function P_vector(fields::AbstractArray, prepr::AbstractString="1DVector")
     end
     n_fields = length(fields)
     function pred(target)
-        :(length($target) === $n_fields)
+        length_eq_check(target, n_fields)
     end
     comp = PComp(prepr, type_of_vector; guard1=NoncachablePre(pred), extract=sequence_index)
     decons(comp, fields)
@@ -120,13 +128,13 @@ function P_slow_view(trans, ps, prepr::AbstractString="ViewBy($trans)")
     
     n_fields = length(ps)
     function post_guard(viewed_tuple)
-        :($viewed_tuple isa Tuple && length($viewed_tuple) === $n_fields)
+        :($viewed_tuple isa Tuple && $(length_eq_check(viewed_tuple, n_fields)))
     end
 
     comp = PComp(
         prepr, type_of_slow_view;
         view=CachablePre(trans),
-        guard2=NoncachablePre(post_guard),
+        guard2=CachablePre(post_guard),
         extract=sequence_index
     )
     decons(comp, ps)
@@ -141,7 +149,7 @@ function P_fast_view(tcons, trans, ps, prepr="ViewBy($trans, typecons=$tcons)")
 
     n_fields = length(ps)
     function post_guard(viewed_tuple)
-        :($viewed_tuple isa Tuple && length($viewed_tuple) === $n_fields)
+        :($viewed_tuple isa Tuple && $(length_eq_check(viewed_tuple, n_fields)))
     end
 
     comp = PComp(

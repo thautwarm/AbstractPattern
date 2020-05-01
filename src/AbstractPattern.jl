@@ -5,7 +5,7 @@ export and, or, literal, and, wildcard, decons,
        guard, effect, metadata, self
 export PatternCompilationError, Target, PatternImpl, PComp
 export APP, CachablePre, NoncachablePre, NoPre
-export ChainDict, for_chaindict, child
+export ChainDict, for_chaindict, child, for_chaindict_dup
 include("DataStructure.jl")
 include("Target.jl")
 include("PatternSignature.jl")
