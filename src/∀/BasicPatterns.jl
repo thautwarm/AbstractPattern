@@ -15,7 +15,7 @@ function see_captured_vars(inner::Any, in_scope::ChainDict{Symbol, Symbol})
     isempty(bind.args) ? inner : Expr(:let, bind, inner)
 end
 
-    
+
 struct SimpleCachablePre <: APP
     f :: Function
 end
@@ -86,7 +86,7 @@ end
 """
 function P_tuple(fields::AbstractArray, prepr::AbstractString="Tuple")
     function type_of_tuple(xs...)
-        
+
         ts = [mk_type_object(i, xs[i]) for i in eachindex(xs)]
         foldl(ts, init=Tuple{ts...}) do last, t
             t isa TypeVar ?
@@ -95,21 +95,23 @@ function P_tuple(fields::AbstractArray, prepr::AbstractString="Tuple")
         end
     end
     comp = PComp(prepr, type_of_tuple)
-    
+
     decons(comp, sequence_index, fields)
 end
 
+function type_of_vector(types...)
+    AbstractArray{T, 1} where T
+    # if length(types) == 0
+    #     AbstractArray{Any,1}
+    # else
+    #     Eltype = foldl(typejoin, types)
+    #     AbstractArray{T,1} where {T<:Eltype}
+    # end
+end
 """deconstruct a vector
 """
 function P_vector(fields::AbstractArray, prepr::AbstractString="1DVector")
-    function type_of_vector(types...)
-        if length(types) == 0
-            AbstractArray{Any,1}
-        else
-            Eltype = foldl(typejoin, types)
-            AbstractArray{T,1} where {T<:Eltype}
-        end
-    end
+
     n_fields = length(fields)
     function pred(target)
         length_eq_check(target, n_fields)
@@ -139,19 +141,19 @@ function P_vector3(init::AbstractArray, pack::Function, tail::AbstractArray, pre
     n1 = length(init)
     n2 = length(tail)
     min_len = length(init) + length(tail)
-    function type_of_vector(types...)
-        Eltype = foldl(
-                typejoin,
-                [
-                    types[1:n1]...,
-                    eltype(types[n1+1]),
-                    types[end-n2:end]...
-                ]
-            )
-        AbstractArray{T,1} where {
-            T<:Eltype
-        }
-    end
+    # function type_of_vector(types...)
+    #     Eltype = foldl(
+    #             typejoin,
+    #             [
+    #                 types[1:n1]...,
+    #                 eltype(types[n1+1]),
+    #                 types[end-n2:end]...
+    #             ]
+    #         )
+    #     AbstractArray{T,1} where {
+    #         T<:Eltype
+    #     }
+    # end
     function extract(arr, i::Int)
         if i <= n1
             :($arr[$i])
@@ -183,7 +185,7 @@ function P_svec3(init::AbstractArray, pack::Function, tail::AbstractArray, prepr
         if i <= n1
             :($arr[$i])
         elseif i === n1 + 1
-            :(view($arr, $n1+1:length($arr)-$n2))
+            :($arr[$n1+1:end-$n2])
         else
             incr = i - n1 - 1
             :($arr[end-$(n2-incr)])
@@ -213,7 +215,7 @@ end
 
 """typed view pattern
 """
-function P_fast_view(tcons, trans, p::Function, prepr::AbstractUnitRange="ViewBy($trans, typecons=$tcons)")
+function P_fast_view(tcons, trans, p::Function, prepr::AbstractString="ViewBy($trans, typecons=$tcons)")
 
     comp = PComp(
         prepr, tcons;
