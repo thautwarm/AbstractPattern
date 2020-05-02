@@ -1,9 +1,5 @@
 using AbstractPattern
-using AbstractPattern.BasicPatterns
-
-
-using AbstractPattern
-using AbstractPattern.BasicPatterns
+using AbstractPattern.BasicPattern
 
 const backend = MK(RedyFlavoured)
 
