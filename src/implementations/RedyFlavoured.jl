@@ -5,6 +5,13 @@ Config = NamedTuple{(:type, :ln)}
 Scope = ChainDict{Symbol,Symbol}
 ViewCache = ChainDict{Pair{TypeObject, Any}, Tuple{Symbol, Bool}}
 
+function update_parent!(view_cache::ViewCache)
+    parent = view_cache.init[]
+    for (typed_viewer, (sym, _)) in view_cache.cur
+        parent[typed_viewer] = (sym, false)
+    end
+end
+
 struct CompileEnv
     # Dict(user_defined_name => actual_name). mangling for scope safety
     scope :: Scope
@@ -215,9 +222,7 @@ function myimpl()
                 end
             
             if computed_guarantee′ === false
-                for (typed_viewer, (sym, _)) in env′.view_cache.cur
-                    env.view_cache.cur[typed_viewer] = (sym, false)
-                end
+                update_parent!(env′.view_cache)
             end
             ret
 
@@ -472,8 +477,10 @@ function compile_spec!(
     for (ty, case) in x.cases
         true_clause = Expr(:block)
         # create new `view_cache` as only one case will be executed
-        env′ = CompileEnv(child(env.scope), child(env.view_cache))
+        view_cache′ = child(env.view_cache)
+        env′ = CompileEnv(child(env.scope), view_cache′)
         compile_spec!(env′, true_clause.args, case, target.with_type(ty))
+        update_parent!(view_cache′)
         push!(suite, Expr(:if, :($sym isa $ty), true_clause))
     end
 end
