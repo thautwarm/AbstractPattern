@@ -5,32 +5,30 @@
 """
 function tag_extract(points_of_view::Dict{Function,Int})
     viewpoint = points_of_view[tag_extract]
-    viewpos = points_of_view[term_position]
 
-    function and(me, many)
+    function and(many)
         @assert !isempty(many)
         ts = getindex.(many, viewpoint)
         t = reduce(typeintersect, ts)
         if t === Base.Bottom
             core_msg = "and patterns require an intersection of $(ts), which seems empty!"
-            linenumbernode = me[viewpos]
-            throw(PatternCompilationError(linenumbernode, core_msg))
+            throw(PatternCompilationError(nothing, core_msg))
         end
         t
     end
 
-    function or(_, many)
+    function or(many)
         ts = getindex.(many, viewpoint)
         Union{ts...}
     end
 
-    function literal(_, val)
+    function literal(val)
         typeof(val)
     end
 
-    wildcard(_) = Any
+    wildcard = Any
 
-    function decons(me, comp::PComp, _, ns)
+    function decons(comp::PComp, _, ns)
         targs = getindex.(ns, viewpoint)
         try
             comp.tcons(targs...)
@@ -39,7 +37,7 @@ function tag_extract(points_of_view::Dict{Function,Int})
             if e isa MethodError && e.f === comp.tcons
                 argstr = join(repeat(String["_"], length(targs)), ", ")
                 throw(PatternCompilationError(
-                    me[viewpos],
+                    nothing,
                     "invalid deconstructor $(comp.repr)($(argstr))",
                 ))
             end
@@ -47,10 +45,8 @@ function tag_extract(points_of_view::Dict{Function,Int})
         end
     end
 
-    guard(_, _) = Any
-    effect(_, _) = Any
-    metadata(_, term, _) = term[viewpoint]
-
+    guard(_) = Any
+    effect(_) = Any
     (
         and = and,
         or = or,
@@ -58,8 +54,7 @@ function tag_extract(points_of_view::Dict{Function,Int})
         wildcard = wildcard,
         decons = decons,
         guard = guard,
-        effect = effect,
-        metadata = metadata,
+        effect = effect
     )
 end
 @specialize

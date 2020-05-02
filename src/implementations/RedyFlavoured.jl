@@ -428,8 +428,8 @@ function compile_spec!(
         push!(suite, :($sym = $(target.repr)))
         target = target.with_repr(sym, Val(false))
     end
-    mkcond = re_tagless(x.pattern)(redy_impl)
-    ln = x.pattern.metatag
+    mkcond = re_tagless(x.pattern, x.ln)(redy_impl)
+    ln = x.ln
     if !isnothing(ln)
         push!(suite, ln)
     end
@@ -524,9 +524,9 @@ end
 """
 function backend(
     expr_to_match::Any,
-    branches::Vector{Pair{F,Symbol}},
+    branches::Vector,
     ln::Union{LineNumberNode,Nothing} = nothing,
-) where {F<:Function}
+)
     spec = spec_gen(branches)
     compile_spec(expr_to_match, spec, ln)
 end

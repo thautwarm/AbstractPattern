@@ -2,11 +2,10 @@
 export re_tagless
 
 @nospecialize
-function re_tagless(pi :: PatternInfo)
-    config = (type=pi.typetag, ln=pi.metatag)
+function re_tagless(pi :: PatternInfo, ln :: Union{Nothing, LineNumberNode} = nothing)
+    config = (type=pi.typetag, ln=ln)
     re_tagless(config, pi.pattern)
 end
-
 
 function re_tagless(config :: NamedTuple, p :: And)
     UserSitgnature.and([re_tagless(e) for e in p.ps], config)

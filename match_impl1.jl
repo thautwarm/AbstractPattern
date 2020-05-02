@@ -172,7 +172,7 @@ const case_sym = Symbol("@case")
 """
 macro switch(val, ex)
     @assert Meta.isexpr(ex, :block)
-    clauses = Pair{Function, Symbol}[]
+    clauses = Union{LineNumberNode, Pair{<:Function, Symbol}}[]
     body = Expr(:block)
     alphabeta = 'a':'z'
     base = gensym()
@@ -188,6 +188,9 @@ macro switch(val, ex)
             push!(clauses,  pattern => br)
             push!(body.args, :(@label $br))
         else
+            if stmt isa LineNumberNode
+                push!(clauses, stmt)
+            end
             push!(body.args, stmt)
         end
     end
@@ -242,6 +245,15 @@ end
         println(a, b)
         return
 end
+
+
+@switch :(&ooo) begin
+    @case :(&$a)
+        println(a)
+        return
+end
+
+
 
 # import MLStyle
 # import Match

@@ -4,7 +4,7 @@
 function pretty(points_of_view::Dict{Function, Int})
     viewpoint = points_of_view[pretty]
 
-    function and(_, ps)
+    function and(ps)
         xs = Any[Print.w("(")]
         for p in ps
             push!(xs, p[viewpoint])
@@ -17,7 +17,7 @@ function pretty(points_of_view::Dict{Function, Int})
         Print.seq(xs...)
     end
 
-    function or(_, ps)
+    function or(ps)
         xs = Any[Print.w("(")]
         for p in ps
             push!(xs, p[viewpoint])
@@ -29,23 +29,19 @@ function pretty(points_of_view::Dict{Function, Int})
         end
         Print.seq(xs...)
     end
-    literal(_, val) = Print.w(string(val))
-    wildcard(_) = Print.w("_")
+    literal(val) = Print.w(string(val))
+    wildcard = Print.w("_")
 
-    function decons(_, comp::PComp, _, ps)
+    function decons(comp::PComp, _, ps)
         Print.seq(Print.w(comp.repr), Print.w("("), getindex.(ps, viewpoint)..., Print.w(")"))
     end
 
-    function guard(_, pred)
+    function guard(pred)
         Print.seq(Print.w("when("), Print.w(repr(pred)), Print.w(")"))
     end
 
-    function effect(_, eff)
+    function effect(eff)
         Print.seq(Print.w("do("), Print.w(repr(eff)), Print.w(")"))
-    end
-
-    function metadata(_, term, loc)
-        Print.seq(term[viewpoint], Print.w("#{"), Print.w(repr(loc)), Print.w("}"))
     end
 
     (
@@ -55,8 +51,7 @@ function pretty(points_of_view::Dict{Function, Int})
         wildcard = wildcard,
         decons = decons,
         guard = guard,
-        effect = effect,
-        metadata = metadata,
+        effect = effect
     )
 end
 @specialize

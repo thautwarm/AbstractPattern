@@ -5,51 +5,53 @@ end
 
 
 PatternImpl = NamedTuple{
-    (:and, :or, :literal, :wildcard, :decons, :guard, :effect, :metadata),
+    (:and, :or, :literal, :wildcard, :decons, :guard, :effect),
 }
 
 
-PatternImpls = Vector{PatternImpl}
+PatternImpls{N} = NTuple{N, PatternImpl}
 
 @nospecialize
-and(args...) = and(collect(args))
-and(ps::Vector) = function apply(impls::PatternImpls)
+and(args :: Any...) = and(collect(args))
+and(ps::Vector) = function apply(impls::PatternImpls{N}) where N
     xs = [p(impls) for p in ps]
-    me = Vector{Any}(undef, length(impls))
-    for i in eachindex(me)
-        me[i] = impls[i].and(me, xs)
+    me = Vector{Any}(undef, N)
+    for i in 1:N
+        @inbounds me[i] = impls[i].and(xs)
     end
     me
 end
 
-or(args...) = or(collect(args))
-or(ps::Vector) = function apply(impls::PatternImpls)
+or(args :: Any...) = or(collect(args))
+or(ps::Vector) = function apply(impls::PatternImpls{N}) where N
     xs = [p(impls) for p in ps]
-    me = Vector{Any}(undef, length(impls))
-    for i in eachindex(me)
-        me[i] = impls[i].or(me, xs)
-    end
-    me
-end
-literal(val) = function apply(impls::PatternImpls)
-    me = Vector{Any}(undef, length(impls))
-    for i in eachindex(me)
-        me[i] = impls[i].literal(me, val)
-    end
-    me
-end
-function wildcard(impls::PatternImpls)
-    me = Vector{Any}(undef, length(impls))
-    for i in eachindex(me)
-        me[i] = impls[i].wildcard(me)
+    me = Vector{Any}(undef, N)
+    for i in 1:N
+        me[i] = impls[i].or(xs)
     end
     me
 end
 
-guard(pred) = function apply(impls::PatternImpls)
+literal(val) = function apply(impls::PatternImpls{N}) where N
     me = Vector{Any}(undef, length(impls))
-    for i in eachindex(me)
-        me[i] = impls[i].guard(me, pred)
+    for i in 1:N
+        me[i] = impls[i].literal(val)
+    end
+    me
+end
+
+function wildcard(impls::PatternImpls{N}) where N
+    me = Vector{Any}(undef, length(impls))
+    for i in 1:N
+        me[i] = impls[i].wildcard
+    end
+    me
+end
+
+guard(pred) = function apply(impls::PatternImpls{N}) where N
+    me = Vector{Any}(undef, N)
+    for i in 1:N
+        me[i] = impls[i].guard(pred)
     end
     me
 end
@@ -75,8 +77,6 @@ struct PComp
     guard2 :: APP
 end
 
-@specialize
-
 invalid_extract(_, _) = error("impossible")
 
 function PComp(
@@ -90,35 +90,24 @@ function PComp(
 end
 
 decons(comp::PComp, ps; extract=invalid_extract) = decons(comp, extract, ps)
-@nospecialize
 
-decons(comp::PComp, extract::Function, ps) = function apply(impls::PatternImpls)
+decons(comp::PComp, extract::Function, ps) = function apply(impls::PatternImpls{N}) where N
     xs = [p(impls) for p in ps]
-    me = Vector{Any}(undef, length(impls))
-    for i in eachindex(me)
-        me[i] = impls[i].decons(me, comp, extract, xs)
+    me = Vector{Any}(undef, N)
+    for i in 1:N
+        me[i] = impls[i].decons(comp, extract, xs)
     end
     me
 end
 
-effect(ctx_perf) = function apply(impls::PatternImpls)
-    me = Vector{Any}(undef, length(impls))
-    for i in eachindex(me)
-        me[i] = impls[i].effect(me, ctx_perf)
+effect(ctx_perf) = function apply(impls::PatternImpls{N}) where N
+    me = Vector{Any}(undef, N)
+    for i in 1:N
+        me[i] = impls[i].effect(ctx_perf)
     end
     me
 end
 
-function metadata(term, location)
-    function apply(impls::PatternImpls)
-        x = term(impls)
-        me = Vector{Any}(undef, length(impls))
-        for i in eachindex(me)
-            me[i] = impls[i].metadata(me, x, location)
-        end
-        me
-    end
-end
 @specialize
 
 const self = (
@@ -128,6 +117,5 @@ const self = (
     wildcard = wildcard,
     decons = decons,
     guard = guard,
-    effect = effect,
-    metadata = metadata,
+    effect = effect
 )

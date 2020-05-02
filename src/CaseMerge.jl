@@ -3,7 +3,7 @@ export AbstractCase, EnumCase, SwitchCase,
        Leaf, Shaped
 
 Continuation = Symbol
-Branch = Pair{PatternInfo, Continuation}
+Branch = Pair{PatternInfo, Tuple{LineNumberNode, Continuation}}
 
 """for generating patterns with one-by-one checks
 """
@@ -27,17 +27,18 @@ end
 """
 struct Shaped <: AbstractCase
     pattern :: PatternInfo
+    ln :: LineNumberNode
     case :: AbstractCase
 end
 
 @nospecialize
 
 function case_split!(result::Vector{Branch}, branches :: Vector{Branch})
-    for (p, branch) in branches
+    for (p, (ln, branch)) in branches
         if p.pattern isa Or
-            case_split!(result, Branch[info => branch for info in p.pattern.ps])
+            case_split!(result, Branch[info => (ln, branch) for info in p.pattern.ps])
         else
-            push!(result, p => branch)
+            push!(result, p => (ln, branch))
         end
     end
 end
@@ -45,7 +46,7 @@ end
 function build_dyn(top::TypeObject, branches::Vector{Branch})::AbstractCase
     length(branches) === 1 && return begin
         br = branches[1]
-        Shaped(br.first, Leaf(br.second))
+        Shaped(br.first, br.second[1], Leaf(br.second[2]))
     end
     @assert !isempty(branches)
     enum_cases = AbstractCase[]
@@ -102,7 +103,7 @@ function build_dyn(top::TypeObject, branches::Vector{Branch})::AbstractCase
         
         if start === final
             br = branches[start]
-            push!(enum_cases, Shaped(br.first, Leaf(br.second)))
+            push!(enum_cases, Shaped(br.first, br.second[1], Leaf(br.second[2])))
             continue
         elseif start > final
             continue

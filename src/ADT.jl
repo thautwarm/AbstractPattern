@@ -10,7 +10,6 @@ abstract type TagfulPattern end
 
 struct PatternInfo
     pattern ::TagfulPattern
-    metatag :: Union{Nothing, LineNumberNode}
     typetag :: TypeObject
 end
 
@@ -53,25 +52,25 @@ end
 
 function untagless(points_of_view::Dict{Function, Int})
     myviewpoint = points_of_view[untagless]
-    metaviewpoint = points_of_view[term_position]
-    typetag_viewpoint = points_of_view[tag_extract]
+    typetag_viewpoint::Int = points_of_view[tag_extract]
     mk_info(all_info)::PatternInfo = PatternInfo(
-        all_info[[myviewpoint, metaviewpoint, typetag_viewpoint]]...
+        all_info[myviewpoint], all_info[typetag_viewpoint]
     )
     ! = mk_info
-    function decons(_::Vector{Any}, comp::PComp, extract::Function, ps)
-        ! = mk_info
+    function decons(comp::PComp, extract::Function, ps)
         Deconstrucution(comp, extract, PatternInfo[!p for p in ps])
     end
+    and(ps::Vector{Vector{Any}}) = And(PatternInfo[!e for e in ps])
+    or(ps::Vector{Vector{Any}}) = Or(PatternInfo[!e for e in ps])
+
     (
-        and = (_, ps) -> And(PatternInfo[!e for e in ps]),
-        or= (_, ps) -> Or(PatternInfo[!e for e in ps]),
-        literal = _uncurry_call_argtail(Literal),
-        wildcard = _uncurry_call_argtail(Wildcard),
+        and = and,
+        or = or,
+        literal = Literal,
+        wildcard = Wildcard(),
         decons = decons,
-        guard = _uncurry_call_argtail(Guard),
-        effect = _uncurry_call_argtail(Effect),
-        metadata = (_, term, _) -> term[myviewpoint]
+        guard = Guard,
+        effect = Effect
     )
 end
 @specialize    
