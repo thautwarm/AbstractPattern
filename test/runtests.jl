@@ -44,10 +44,10 @@ code = backend(
 
         # pairit(x) = :(complex_func1($x), complex_func2($x))
         P_slow_view(pairit,
-            [P_type_of(Int), P_type_of(Int)],
+            P_tuple([P_type_of(Int), P_type_of(Int)])
         ) => :h,
         P_slow_view(pairit,
-            [P_type_of(String), P_type_of(Int)],
+            P_tuple([P_type_of(String), P_type_of(Int)])
         ) => :i
     ]
 )
@@ -65,17 +65,17 @@ code = backend(
     :val,
     [
         and(
-            P_slow_view(untyped_view1, []),
             P_slow_view(untyped_view2,
-                [P_type_of(Int), P_type_of(Int)],
-            )
+                [P_type_of(Int), P_type_of(Int)] |> P_tuple,
+            ),
+            P_slow_view(untyped_view1, literal(true)),
+            
         ) => :h,
         P_slow_view(untyped_view2,
             [
                 P_type_of(String),
-                P_slow_view(untyped_view1, [])
-            
-            ],
+                P_slow_view(untyped_view1, literal(false))
+            ] |> P_tuple,
         ) => :i
     ]
 )

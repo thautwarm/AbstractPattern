@@ -1,11 +1,25 @@
 using AbstractPattern
 using AbstractPattern.BasicPatterns
 
-
-using AbstractPattern
-using AbstractPattern.BasicPatterns
-
 const backend = MK(RedyFlavoured)
+"""
+[a, b..., c] -> :vec3 => [a], b, [c]
+[a, b, c]    -> :vec => [a, b, c]
+"""
+function ellipsis_split(args::AbstractArray{T, 1}) where T
+    ellipsis_index = findfirst(args) do arg
+        Meta.isexpr(arg, :...)
+    end
+    if isnothing(ellipsis_index)
+        Val(:vec) => args
+    else
+        Val(:vec3) => (
+            args[1:ellipsis_index-1],
+            args[ellipsis_index].args[1],
+            args[ellipsis_index+1:end]
+        )
+    end
+end
 
 function P_partial_struct_decons(t, partial_fields, ps, prepr::AbstractString="$t")
     function tcons(_...)
@@ -54,22 +68,26 @@ function basic_ex2tf(eval::Function, ex::Expr)
     elseif hd === :if
         @assert n_args === 2
         cond = args[1]
-        guard() do target, env, _
-            bind = Expr(:block)
-            for_chaindict(env) do k, v
-                push!(bind.args, :($k = $v))
-            end
-            Expr(:let, bind, cond)
+        guard() do _, scope, _
+            see_captured_vars(cond, scope)
         end
     elseif hd === :&
         @assert n_args === 1
         val = args[1]
-        guard() do target, env, _
-            bind = Expr(:block)
-            for_chaindict(env) do k, v
-                push!(bind.args, :($k = $v))
-            end
-            Expr(:let, bind, :($target == $val))
+        guard() do target, scope, _
+            see_captured_vars(:($target == $val), scope)
+        end
+    elseif hd === :let
+        bind = args[1]
+        @assert bind isa Expr
+        if bind.head === :(=)
+            @assert bind.args[1] isa Symbol
+            P_bind(bind.args[1], bind.args[2], see_capture=true)
+        else
+            @assert bind.head === :block
+            binds = Function[P_bind(arg.args[1], arg.args[2], see_capture=true) for arg in bind.args]
+            push!(binds, wildcard)
+            and(binds)
         end
     elseif hd === :(::)
         if n_args === 2
@@ -83,16 +101,16 @@ function basic_ex2tf(eval::Function, ex::Expr)
             P_type_of(ty)
         end
     elseif hd === :vect
-        ellipsis_index = findfirst(args) do arg
-            Meta.isexpr(arg, :...)
-        end
-        isnothing(ellipsis_index) ?
-            P_vector([!e for e in args]) :
-            P_vector3(
-                [!e for e in args[1:ellipsis_index-1]],
-                !(args[ellipsis_index].args[1]),
-                [!e for e in args[ellipsis_index+1:end]],
-            )
+        tag, split = ellipsis_split(args)
+        return tag isa Val{:vec} ?
+            P_vector([!e for e in split]) :
+            let (init, mid, tail) = split
+                P_vector3(
+                    [!e for e in init],
+                    !mid,
+                    [!e for e in tail]
+                )
+            end
     elseif hd === :tuple
         P_tuple([!e for e in args])
     elseif hd === :call
@@ -100,6 +118,18 @@ function basic_ex2tf(eval::Function, ex::Expr)
             args′ = view(args, 2:length(args))
             n_args′ = n_args - 1
             t = eval(f)
+            if t === Core.svec
+                tag, split = ellipsis_split(args′ )
+                return tag isa Val{:vec} ?
+                    P_svec([!e for e in split]) :
+                    let (init, mid, tail) = split
+                        P_svec3(
+                            [!e for e in init],
+                            !mid,
+                            [!e for e in tail]
+                        )
+                    end
+            end
             all_field_ns = fieldnames(t)
             partial_ns = Symbol[]
             patterns = Function[]
@@ -202,63 +232,69 @@ end
     @case (1, 2)
         println(b)
         return
-    @case (a, &(a + 4))
-        println("this run")
+    @case (a, &(a + 4)) && let x = Int[a, 1], x = x .+ a end
+        println("this run ", x)
         return
 end
 
-import MLStyle
-import Match
-import Rematch
-
-function f_rematch(value)
-    Rematch.@match value begin    
-        _::String => :string
-        (2, a, 3) => (:some_tuple, a)
-        [1, a..., 3, 4] => (:some_vector, a)
-    end
+@switch Tuple{Int, Int}.parameters begin
+    @case Core.svec(a, b)
+        println(a, b)
+        return
 end
 
-function f_match(value)
-    Match.@match value begin    
-        _::String => :string
-        (2, a, 3) => (:some_tuple, a)
-        [1, a..., 3, 4] => (:some_vector, a)
-    end
-end
+# import MLStyle
+# import Match
+# import Rematch
 
-function f_mlstyle(value)
-    Rematch.@match value begin    
-        _::String => :string
-        (2, a, 3) => (:some_tuple, a)
-        [1, a..., 3, 4] => (:some_vector, a)
-    end
-end
+# function f_rematch(value)
+#     Rematch.@match value begin    
+#         _::String => :string
+#         (2, a, 3) => (:some_tuple, a)
+#         [1, a..., 3, 4] => (:some_vector, a)
+#     end
+# end
 
-function f_this(value)
-    @switch value begin
-    @case _::String
-        return :string
-    @case (2, a, 3) 
-        return (:some_tuple, a)
-    @case [1, a..., 3, 4]
-        return (:some_vector, a)
-    end
-end
+# function f_match(value)
+#     Match.@match value begin    
+#         _::String => :string
+#         (2, a, 3) => (:some_tuple, a)
+#         [1, a..., 3, 4] => (:some_vector, a)
+#     end
+# end
 
-using BenchmarkTools
-data = [
-    "asda",
-    (2, 1 ,3),
-    [1, 2, 2, 3, 4]
-]
+# function f_mlstyle(value)
+#     Rematch.@match value begin    
+#         _::String => :string
+#         (2, a, 3) => (:some_tuple, a)
+#         [1, a..., 3, 4] => (:some_vector, a)
+#     end
+# end
 
-fs = [f_rematch, f_match, f_mlstyle, f_this]
+# function f_this(value)
+#     @switch value begin
+#     @case _::String
+#         return :string
+#     @case (2, a, 3) 
+#         return (:some_tuple, a)
+#     @case [1, a..., 3, 4]
+#         return (:some_vector, a)
+#     end
+# end
 
-for datum in data
-    for f in fs
-        @info :testing f datum
-        println(@btime $f($datum))
-    end
-    println("===================")
-end
+# using BenchmarkTools
+# data = [
+#     "asda",
+#     (2, 1 ,3),
+#     [1, 2, 2, 3, 4]
+# ]
+
+# fs = [f_rematch, f_match, f_mlstyle, f_this]
+
+# for datum in data
+#     for f in fs
+#         @info :testing f datum
+#         println(@btime $f($datum))
+#     end
+#     println("===================")
+# end

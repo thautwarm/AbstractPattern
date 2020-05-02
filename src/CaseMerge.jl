@@ -96,7 +96,6 @@ function build_dyn(top::TypeObject, branches::Vector{Branch})::AbstractCase
 
     push!(groups, length(branches) + 1)
     n_groups = length(groups)
-
     for i_group in 1:n_groups-1
         start = groups[i_group]
         final = groups[i_group+1] - 1
@@ -121,11 +120,10 @@ function build_dyn(top::TypeObject, branches::Vector{Branch})::AbstractCase
         ]
         push!(
             enum_cases,
-            length(switch) === 1 ?
-                switch[1].second :
-                SwitchCase(Dict(switch))
+            SwitchCase(Dict(switch))
         )
     end
+
     if length(enum_cases) === 1
         enum_cases[1]
     else

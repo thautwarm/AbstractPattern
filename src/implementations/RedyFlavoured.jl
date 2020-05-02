@@ -494,7 +494,7 @@ function compile_spec!(
         # cases are tried in order,
         # hence `view_cache` can inherit from the previous case
         env′ = CompileEnv(child(env.scope), env.view_cache)
-        compile_spec!(env, suite, case, target.clone)
+        compile_spec!(env′, suite, case, target.clone)
     end
 end
 

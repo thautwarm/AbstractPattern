@@ -1,11 +1,21 @@
 module BasicPatterns
 using AbstractPattern
 
-export P_bind, P_tuple, P_type_of, P_vector, P_capture, P_vector3, P_slow_view
-export SimpleCachablePre
+export P_bind, P_tuple, P_type_of, P_vector, P_capture, P_vector3, P_slow_view, P_fast_view
+export P_svec, P_svec3
+export SimpleCachablePre, see_captured_vars
 @nospecialize
 OptionalLn = Union{LineNumberNode,Nothing}
 
+function see_captured_vars(inner::Any, in_scope::ChainDict{Symbol, Symbol})
+    bind = Expr(:block)
+    for_chaindict(in_scope) do k, v
+        push!(bind.args, :($k = $v))
+    end
+    isempty(bind.args) ? inner : Expr(:let, bind, inner)
+end
+
+    
 struct SimpleCachablePre <: APP
     f :: Function
 end
@@ -14,6 +24,12 @@ end
 function sequence_index(viewed, i::Integer)
     :($viewed[$i])
 end
+
+function self_index(viewed, i::Integer)
+    @assert i === 1
+    viewed
+end
+
 
 function length_eq_check(seq, n::Int)
     if n === 0
@@ -43,10 +59,11 @@ end
 
 """bind a symbol
 """
-function P_bind(n::Symbol, expr::Any)
+function P_bind(n::Symbol, expr::Any; see_capture=false)
     function bind_effect!(target, scope::ChainDict{Symbol,Symbol}, ln::OptionalLn)
+        expr′ = see_capture ? see_captured_vars(expr, scope) : expr
         n′ = scope[n] = gensym(n)
-        :($(n′) = $expr)
+        :($n′ = $expr′)
     end
     effect(bind_effect!)
 end
@@ -101,9 +118,24 @@ function P_vector(fields::AbstractArray, prepr::AbstractString="1DVector")
     decons(comp, sequence_index, fields)
 end
 
+
+"""deconstruct a vector
+"""
+function P_svec(fields::AbstractArray, prepr::AbstractString="svec")
+    function type_of_svec(_...)
+        Core.SimpleVector
+    end
+    n_fields = length(fields)
+    function pred(target)
+        length_eq_check(target, n_fields)
+    end
+    comp = PComp(prepr, type_of_svec; guard1=NoncachablePre(pred))
+    decons(comp, sequence_index, fields)
+end
+
 """deconstruct a vector in this way: [a, b, c, pack..., d, e]
 """
-function P_vector3(init::AbstractArray, pack, tail::AbstractArray, prepr::AbstractString = "1DVector Pack")
+function P_vector3(init::AbstractArray, pack::Function, tail::AbstractArray, prepr::AbstractString = "1DVector Pack")
     n1 = length(init)
     n2 = length(tail)
     min_len = length(init) + length(tail)
@@ -138,41 +170,56 @@ function P_vector3(init::AbstractArray, pack, tail::AbstractArray, prepr::Abstra
 end
 
 
+"""deconstruct a vector in this way: [a, b, c, pack..., d, e]
+"""
+function P_svec3(init::AbstractArray, pack::Function, tail::AbstractArray, prepr::AbstractString = "svec Pack")
+    n1 = length(init)
+    n2 = length(tail)
+    min_len = length(init) + length(tail)
+    function type_of_svec(types...)
+        Core.SimpleVector
+    end
+    function extract(arr, i::Int)
+        if i <= n1
+            :($arr[$i])
+        elseif i === n1 + 1
+            :(view($arr, $n1+1:length($arr)-$n2))
+        else
+            incr = i - n1 - 1
+            :($arr[end-$(n2-incr)])
+        end
+    end
+    function pred(target)
+        :(length($target) >= $min_len)
+    end
+    comp = PComp(prepr, type_of_svec; guard1=NoncachablePre(pred))
+    decons(comp, extract, [init; pack; tail])
+end
+
+
 """untyped view pattern
 """
-function P_slow_view(trans, ps, prepr::AbstractString="ViewBy($trans)")
+function P_slow_view(trans, p::Function, prepr::AbstractString="ViewBy($trans)")
     function type_of_slow_view(args...)
         Any
-    end
-    
-    n_fields = length(ps)
-    function post_guard(viewed_tuple)
-        :($viewed_tuple isa Tuple && $(length_eq_check(viewed_tuple, n_fields)))
     end
 
     comp = PComp(
         prepr, type_of_slow_view;
-        view=SimpleCachablePre(trans),
-        guard2=SimpleCachablePre(post_guard)
+        view=SimpleCachablePre(trans)
     )
-    decons(comp, extract, ps)
+    decons(comp, self_index, [p])
 end
 
 """typed view pattern
 """
-function P_fast_view(tcons, trans, ps, prepr::AbstractUnitRange="ViewBy($trans, typecons=$tcons)")
-
-    n_fields = length(ps)
-    function post_guard(viewed_tuple)
-        :($viewed_tuple isa Tuple && $(length_eq_check(viewed_tuple, n_fields)))
-    end
+function P_fast_view(tcons, trans, p::Function, prepr::AbstractUnitRange="ViewBy($trans, typecons=$tcons)")
 
     comp = PComp(
         prepr, tcons;
-        view=SimpleCachablePre(trans),
-        guard2=NoncachablePre(post_guard)
+        view=SimpleCachablePre(trans)
     )
-    decons(comp, sequence_index, ps)
+    decons(comp, self_index, [p])
 end
 
 @specialize
