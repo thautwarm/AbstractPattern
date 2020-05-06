@@ -2,6 +2,8 @@
 
 An abstraction among pattern matching, provided with optimizations for pattern matching compilation.
 
+This repo, as a proof-of-concepts, has turned out to be successful and now got integrated into MLStyle.jl, to help it achieve the best performance and extensibility.
+
 ## Why Optimizations
 
 So far many implementations use **nested if-else** as the target of generating matching branches.
