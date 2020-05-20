@@ -34,7 +34,7 @@ end
 
 function spec_gen(branches :: Vector)
     cores = Branch[]
-    ln = LineNumberNode(1, "<unknown>")
+    ln = LineNumberNode(1, Symbol("<unknown>"))
     for branch in branches
         branch isa LineNumberNode && begin
             ln = branch
